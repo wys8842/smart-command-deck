@@ -14,3 +14,5 @@ logs/
 *.sqlite3
 memory/
 tool-output/
+server.pid
+.ruff_cache/

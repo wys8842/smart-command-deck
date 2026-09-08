@@ -20,6 +20,7 @@ class Event:
     ts: str
     round: int = 1
     payload: dict = field(default_factory=dict)
+    seq: int = 0
 
 
 def new_event(kind: str, source: str, payload: dict, round: int = 1) -> Event:
@@ -56,9 +57,22 @@ class EventBus:
 
     def enqueue(self, event: Event) -> Event:
         if not any(e.get("ev_id") == event.ev_id for e in self._data["events"]):
+            event.seq = len(self._data["events"]) + 1
             self._data["events"].append(asdict(event))
             self._save()
         return event
+
+    def receipt(self, ev_id: str) -> dict | None:
+        """回执：查某事件是否已入队/已处理。"""
+        rec = next((e for e in self._data["events"] if e.get("ev_id") == ev_id), None)
+        if rec is None:
+            return None
+        return {
+            "ev_id": ev_id,
+            "seq": rec.get("seq", 0),
+            "kind": rec.get("kind"),
+            "status": "processed" if ev_id in self._data["processed"] else "queued",
+        }
 
     def pending(self) -> list[Event]:
         processed = set(self._data["processed"])

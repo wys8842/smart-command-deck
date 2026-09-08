@@ -39,22 +39,38 @@ smart-command-deck/
 
 ## 安装
 
+> 本项目统一使用 **llm 环境** 解释器：`D:\python\miniconda\envs\llm\python.exe`
+
 ```bash
+LLM_PY="D:/python/miniconda/envs/llm/python.exe"
+
 # 1. 安装框架（同级目录，开发期 editable）
-pip install -e ../agentorchestra
+"$LLM_PY" -m pip install -e ../agentorchestra
 
 # 2. 安装本工程（开发依赖）
-pip install -e ".[dev]"
+"$LLM_PY" -m pip install -e ".[dev]"
+"$LLM_PY" -m pip install fastapi uvicorn    # API 层
 ```
 
 ## 运行
 
 ```bash
-# M0 离线冒烟 —— 验证『app → agentorchestra』通路
-python -m app.main --smoke
+# M0 离线冒烟
+"$LLM_PY" -m app.main --smoke
 
-# 运行测试
-pytest tests
+# 启动 API 服务（uvicorn，单机）
+"$LLM_PY" -m app.api.launch          # http://127.0.0.1:8000
+
+# 常用接口
+POST /events                        # 事件入队 {kind,source,payload,round}
+POST /games/{game_id}/pump          # 消费待处理事件并跑推演图（新事件/批准续跑）
+GET  /approvals                     # 待批命令列表
+POST /approvals/{order_id}          # 批准/驳回 {approve: bool}
+GET  /games/{game_id}/replay        # 复盘 timeline JSON
+GET  /health
+
+# 测试
+"$LLM_PY" -m pytest tests
 ```
 
 ## 当前进度
@@ -68,12 +84,20 @@ pytest tests
 | M4 账目+权限+审计 | ✅ 通过 | 事务补偿(resupply 失败回滚)、RBAC 权限矩阵、AuditManager 审计(含被拒留痕) |
 | M5 复盘+观测+加固 | ✅ 通过 | 一键剧本复盘导出、Prometheus 指标、3 局并发冒烟、运维手册 |
 
+## 扩展功能（②③④）
+| 项 | 状态 | 说明 |
+|---|---|---|
+| ② SQLite 持久化 + 续跑 | ✅ | `app/domain/persist.py`：ontology 落 SQLite，重开引擎可续跑 |
+| ③ FastAPI API 层 | ✅ | `app/api/server.py` + `app/api/launch.py`：`/events /games/{id}/pump /approvals /approvals/{id} /games/{id}/replay`（已实测启动） |
+| ④ Coordinator 事务整合 | ✅ | `app/domain/coord_ledger.py`：幂等重放 / 补偿回滚 / DLQ；含 Python3.10 `asyncio.timeout` 兼容垫片（`app/core/compat.py`） |
+
 ## 里程碑验收速览
 
 ```bash
-pytest tests            # 19 passed：M1 建模 / M2 事件泵 / M3 DAG+HITL / M4 事务+权限+审计 / M5 复盘+观测
-ruff check app          # All checks passed
-python -m app.main --smoke   # M0 离线冒烟
+LLM_PY="D:/python/miniconda/envs/llm/python.exe"
+"$LLM_PY" -m pytest tests       # 24 passed：M1~M5 + ②③④
+"$LLM_PY" -m ruff check app      # All checks passed
+"$LLM_PY" -m app.main --smoke    # M0 离线冒烟
 ```
 
 ## 工程目录
