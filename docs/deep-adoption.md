@@ -19,18 +19,13 @@
 
 ## 2. 待深化的方向（按价值排序）
 
-1. **持久化图状态**：`GraphScheduler(store=CheckpointStore)` 落库 Inbox 与 iteration，
-   取代"事件只在 EventBus 去重"，实现真正的崩溃续跑与多实例安全。
-2. **Ontology WorkflowEngine**：把"打击/补给"等多步业务动作串成 Workflow，
-   替代散落的单动作调用；配合 `TransactionManager` 做补偿。
-3. **HITL 用 state.Interrupt**：以框架的 Interrupt/Thread 表达人工批准与续跑，
+1. **HITL 用 state.Interrupt**：以框架的 Interrupt/Thread 表达人工批准与续跑，
    与 checkpoint 统一，减少自定义审批事件。
-4. **capability/memory 战例召回**：沉淀成功处置案例；性能上用 TTL + 懒加载 + 向量缓存，
-   避免每轮召回拖慢主链路。
-5. **Capability 注册表**：用 `runtime/capabilities` 统一装配 trace/memory/checkpoint 等特性。
-6. **可观测深化**：`TraceLogger` 每局 JSONL/HTML + 可选 OTLP；SLO 指标（回合耗时、审批时长）。
-7. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
-8. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
+2. **capability/memory 战例召回**：沉淀成功处置案例；性能上用 TTL + 懒加载 + 向量缓存。
+3. **Capability 注册表**：用 `runtime/capabilities` 统一装配 trace/memory/checkpoint 等特性。
+4. **可观测深化**：`TraceLogger` 每局 JSONL/HTML + 可选 OTLP；SLO 指标（回合耗时、审批时长）。
+5. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
+6. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
 
 ## 3. 性能基线（`python scripts/bench.py`）
 
@@ -62,5 +57,19 @@
 
 ```bash
 D:/python/miniconda/envs/llm/python.exe scripts/bench.py            # 生成 docs/perf-report.md
+D:/python/miniconda/envs/llm/python.exe scripts/bench_llm.py        # 生成 docs/llm-perf-report.md
 D:/python/miniconda/envs/llm/python.exe -m pytest tests -q          # 回归
 ```
+
+## 6. 本轮已落地（1/2/3）
+
+1. **持久化图状态**：`GraphScheduler(store=CheckpointStore)`（`app/domain/state_store.py`）
+   —— Inbox/iteration 落 SQLite（`data/state.db`），`process_pending(state_store=...)` 接入。
+2. **Ontology WorkflowEngine**：`app/domain/workflows.py` 注册
+   `strike_sequence`（侦察→命令→结算）与 `resupply_sequence`（补给→结算），
+   并暴露 `run_workflow` 工具供 Agent 触发。
+3. **真实模型性能**：`app/core/llm_resilience.py::CachedLLM`（LRU+TTL 响应缓存）
+   + `SymphonyLLM` 超时/重试（`LLM_TIMEOUT`/`LLM_MAX_RETRIES`）+ 有界并发
+   （`process_pending(max_concurrency=...)`，`DECK_MAX_CONCURRENCY`）。
+
+实测（minimax-m3）：**p50 ≈ 2.3s，p95 ≈ 5.9s，缓存命中 ≈ 0.1ms**（见 `docs/llm-perf-report.md`）。

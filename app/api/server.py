@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.api.ui import ui_html
 from app.core.llm_factory import build_intel_agent, llm_mode
 from app.domain.persist import open_persistent_engine
+from app.domain.state_store import ensure_ready
 from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
 from app.engine.hitl import approval_event, approve_order, pending_orders
@@ -44,6 +45,8 @@ def create_app(
     pump: bool = False,
     poll_interval: float = 1.0,
     replay_store: Optional[ReplayStore] = None,
+    state_store: Optional[Any] = None,
+    max_concurrency: int = 1,
 ) -> FastAPI:
     """构造 API 应用。
 
@@ -78,10 +81,13 @@ def create_app(
 
     worker = PumpWorker(engine, bus, poll_interval=poll_interval,
                         intel_agent_factory=factory, thread_id=DEFAULT_GAME,
-                        replay_store=replay_store) if pump else None
+                        replay_store=replay_store, state_store=state_store,
+                        max_concurrency=max_concurrency) if pump else None
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        if state_store is not None:
+            await ensure_ready(state_store)
         if worker is not None:
             worker.start()
         yield
@@ -143,6 +149,8 @@ def create_app(
             intel_agent_factory=factory,
             thread_id=game_id,
             replay_store=replay_store,
+            state_store=state_store,
+            max_concurrency=max_concurrency,
         )
 
     @app.get("/approvals")

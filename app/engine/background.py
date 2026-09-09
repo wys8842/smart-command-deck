@@ -23,6 +23,8 @@ class PumpWorker:
         intel_agent_factory: Optional[Callable[[], Any]] = None,
         thread_id: str = "default",
         replay_store: Any = None,
+        state_store: Any = None,
+        max_concurrency: int = 1,
     ):
         self.engine = engine
         self.bus = bus
@@ -30,6 +32,8 @@ class PumpWorker:
         self.intel_agent_factory = intel_agent_factory
         self.thread_id = thread_id
         self.replay_store = replay_store
+        self.state_store = state_store
+        self.max_concurrency = max_concurrency
         self._stop = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
         self.processed_total = 0
@@ -41,6 +45,8 @@ class PumpWorker:
             intel_agent_factory=self.intel_agent_factory,
             thread_id=self.thread_id,
             replay_store=self.replay_store,
+            state_store=self.state_store,
+            max_concurrency=self.max_concurrency,
         )
         n = res["processed_count"]
         self.processed_total += n

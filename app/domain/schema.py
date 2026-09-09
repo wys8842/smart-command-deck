@@ -160,7 +160,16 @@ def do_resupply(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
 def do_settle_round(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
     store = _store(ctx)
     round_no = params.get("round", 1)
-    return {"round": round_no, "summary": f"第 {round_no} 回合结算完成", "orders": store.count("order")}
+    summary = f"第 {round_no} 回合结算完成"
+    store.insert("record", {
+        "record_id": f"round-{round_no}",
+        "kind": "settle",
+        "source": "workflow",
+        "round": round_no,
+        "summary": summary,
+        "detail": "",
+    })
+    return {"round": round_no, "summary": summary, "orders": store.count("order")}
 
 
 # ==================== 动作类型 ====================
@@ -239,6 +248,11 @@ def create_engine(
         engine.register_object_type(t)
     for action in build_actions().values():
         engine.register_action(action)
+    # 2) 业务工作流：编排多步动作 + 暴露 run_workflow 工具
+    from app.domain.workflows import build_workflows, register_workflow_action
+
+    build_workflows(engine)
+    register_workflow_action(engine)
     if permissions is None:
         engine.allow(roles or [principal], resource="*", action="*")
     else:

@@ -44,8 +44,10 @@ def build_llm(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
 ) -> Any:
-    """构造 SymphonyLLM；缺 key/base_url 时回退 Mock（保证离线/未配置仍可启动）。"""
+    """构造 SymphonyLLM（含超时/重试 + 响应缓存）；缺 key/base_url 时回退 Mock。"""
     from agentorchestra.core.llm import SymphonyLLM
+
+    from app.core.llm_resilience import CachedLLM
 
     model = model or os.getenv("LLM_MODEL_ID")
     api_key = api_key if api_key is not None else os.getenv("LLM_API_KEY")
@@ -54,7 +56,20 @@ def build_llm(
     if not (model and api_key):
         logger.warning("未配置 LLM_MODEL_ID/LLM_API_KEY，使用离线 MockLLM")
         return MockLLM()
-    return SymphonyLLM(model=model, api_key=api_key, base_url=base_url)
+
+    llm = SymphonyLLM(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        timeout=int(os.getenv("LLM_TIMEOUT", "60")),
+        max_retries=int(os.getenv("LLM_MAX_RETRIES", "3")),
+        retry_base_delay=float(os.getenv("LLM_RETRY_BASE_DELAY", "1.0")),
+    )
+    cache_size = int(os.getenv("LLM_CACHE_SIZE", "256"))
+    if cache_size > 0:
+        return CachedLLM(llm, max_size=cache_size,
+                         ttl=float(os.getenv("LLM_CACHE_TTL", "3600")))
+    return llm
 
 
 def build_intel_agent(
