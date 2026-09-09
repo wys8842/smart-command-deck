@@ -46,6 +46,17 @@ LLM_API_KEY=sk-xxx
 2. 重启服务后，`GET /health` 会显示 `llm_mode:"real"` 与 `llm_model`；否则自动回退离线 Mock。
 3. 研判 Agent 由 `app/core/llm_factory.py::build_intel_agent` 构造（读 .env/环境变量，可注入替换）。
 
+## 密钥安全（重要）
+
+- **API Key 只放 `.env`**（已被 `.gitignore` 忽略，永不提交/推送）；仓库只保留占位模板 `.env.example`。
+- 已内置三道防线：
+  1. `.gitignore`：忽略 `.env`、`.env.*`、`*.key`、`*.pem`、`secrets/` 等；
+  2. 本地 **pre-commit 钩子**（`.githooks/pre-commit`）：提交前扫描已跟踪文件，命中疑似密钥即阻止；
+     首次克隆后启用：`git config core.hooksPath .githooks`
+  3. CI 步骤 `python scripts/check_secrets.py`：远端同样拦截。
+- 手动自检：`python scripts/check_secrets.py`；测试：`pytest tests/test_no_secrets.py`。
+- 若不慎提交过密钥：立即在平台**吊销/轮换**，再从历史中移除（`git filter-repo`），不要仅删除文件。
+
 ## 关键文档
 - [详细技术路线](docs/technical-roadmap.md)：从 M0 到 M5 的分步实施方案、架构与验收标准。
 - [运行与运维手册](docs/operations.md)：启动/备份/上线检查清单（单机版）。

@@ -16,4 +16,13 @@ memory/
 tool-output/
 server.pid
 .ruff_cache/
+
+# 密钥/环境文件（绝不提交；.env.example 是占位模板可提交）
 .env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+secrets/
+credentials.json

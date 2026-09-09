@@ -25,6 +25,9 @@ jobs:
           pip install "agentorchestra @ git+https://github.com/wys8842/agentorchestra-v0.2.0.git"
           pip install -e ".[dev]"
 
+      - name: Secret scan (block leaked keys)
+        run: python scripts/check_secrets.py
+
       - name: Lint
         run: ruff check app
 
