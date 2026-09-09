@@ -1,41 +1,107 @@
 # Smart Command Deck · 智能推演指挥台
 
-> 面向「军事指挥 / 兵棋推演」类业务的**回合制多智能体决策推演平台**——以
-> [agentorchestra](https://github.com/wys8842/agentorchestra-v0.2.0)（Symphony）
-> 作为**第三方底层库**进行构建；**单机部署、非并行（单进程事件循环内协作）**。
+回合制多智能体决策推演平台。以 [agentorchestra](https://github.com/wys8842/agentorchestra-v0.2.0)
+（Symphony）作为底层库：Ontology 承载战场对象与动作，Graph 编排"研判→分级→建议→人工批准→执行→结算"，
+事件泵驱动回合推进；单机、单进程、asyncio 协作。
 
-本目录是与框架仓库 **相互隔离** 的独立应用工程（建议单独建 git 仓库），
-只通过标准依赖方式使用框架，不改动框架源码。
+- 运行环境：Python ≥ 3.10；框架 `agentorchestra` 0.2.0（editable 或 git 安装）
+- 服务：FastAPI + uvicorn（`app/api/launch.py`）
+- 存储：SQLite（`data/games.db`、`data/state.db`）、JSONL（事件/复盘/战例）
+- 验证：`pytest tests`（62 用例）、`scripts/acceptance.py`（11 项端到端验收）
 
-## 项目定位（为什么是 9.5/10 的适配形态）
+## 目录结构
 
-| 维度 | 取值 | 说明 |
+```
+app/
+├── api/        接入层
+│   ├── launch.py     uvicorn 启动入口（读取 .env、预置战场关系、create_app）
+│   ├── server.py     FastAPI 应用与全部路由（create_app）
+│   └── ui.py         浏览器控制台单页（HTML/JS）
+├── core/       装配层（框架资源与横切能力）
+│   ├── config.py        框架 Config 构建 / 数据目录
+│   ├── env.py           .env 加载（KEY=VALUE，不覆盖已有环境变量）
+│   ├── llm_factory.py   build_config / build_llm / build_intel_agent / llm_mode
+│   ├── llm_resilience.py CachedLLM（LRU+TTL 响应缓存）
+│   ├── mock_llm.py      离线 MockLLM
+│   ├── capabilities.py  应用级 Capability（战例/态势/遥测）
+│   ├── tenancy.py       TenantGovernor（租户上下文 + 配额 + 用量）
+│   ├── tracing.py       TraceLogger 配置 / OTLP 开关 / 指标辅助
+│   ├── observability.py Prometheus collector 初始化
+│   └── compat.py        Python 3.10 的 asyncio.timeout 兼容垫片
+├── domain/     领域层（Ontology 建模与业务能力）
+│   ├── schema.py        ObjectType/LinkType/ActionType + create_engine
+│   ├── workflows.py     Workflow（strike_sequence / resupply_sequence）+ run_workflow 动作
+│   ├── relations.py     战场关系（seed_scenario/ensure_scenario/situation/SituationQueryTool）
+│   ├── ledger.py        TransactionManager 账务补偿（纯 Saga）
+│   ├── coord_ledger.py  TransactionCoordinator 账务（幂等/补偿/DLQ）
+│   ├── experience.py    ExperienceStore（战例库：内存检索 + JSONL 持久化 + 召回缓存）
+│   ├── persist.py       open_persistent_engine / close_engine（SQLite 对象存储）
+│   ├── state_store.py   open_state_store / ensure_ready（CheckpointStore）
+│   └── m3.py            预留模块
+├── engine/     推演引擎
+│   ├── event_bus.py     EventBus（append-only JSONL + 已处理去重）
+│   ├── graphs.py        最小研判图（entry→intel→record）+ IntelAgentNode
+│   ├── deck.py          完整推演 DAG（分级/建议/命令/HITL/执行/结算）
+│   ├── pump.py          事件消息转换与单事件处理
+│   ├── service.py       process_pending（顺序/有界并发；配额/战例/租户/指标）
+│   ├── background.py    PumpWorker（常驻轮询消费）
+│   ├── hitl.py          审批入口（approve_order/pending_orders/approval_event）
+│   ├── interrupts.py    框架 Interrupt 封装（ensure/list/resolve + Resumer handler）
+│   └── replay.py        ReplayStore + export_timeline + run_scripted_scenario
+└── main.py     离线冒烟入口（python -m app.main --smoke）
+
+scripts/
+├── acceptance.py   端到端验收 + 压测 → docs/acceptance-report.md
+├── capacity.py     容量压测（默认 2000 事件 / 8 局）→ docs/capacity-report.md
+├── bench.py        框架组件基准 → docs/perf-report.md
+├── bench_llm.py    真实模型延迟基准 → docs/llm-perf-report.md
+├── llm_e2e.py      真实模型端到端压测 → docs/llm-e2e-report.md
+└── check_secrets.py 密钥泄漏扫描（CI / pre-commit）
+
+tests/            pytest 用例（62）
+docs/             架构、运维、集成说明与自动生成的报告
+```
+
+## 安装与启动
+
+```bash
+LLM_PY="D:/python/miniconda/envs/llm/python.exe"
+
+"$LLM_PY" -m pip install -e ../agentorchestra      # 框架（editable）
+"$LLM_PY" -m pip install -e ".[dev]"               # 本项目 + 开发依赖
+"$LLM_PY" -m pip install fastapi uvicorn           # 服务依赖
+
+"$LLM_PY" -m app.api.launch                        # 启动 http://127.0.0.1:8000
+"$LLM_PY" -m app.main --smoke                      # 离线冒烟
+```
+
+浏览器控制台：<http://127.0.0.1:8000/>（入队事件 / 待批批准 / 事件回执 / 复盘时间线）。
+
+## HTTP 接口
+
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| 触发 | 回合制 + 事件驱动（秒~分钟级） | 切合框架 `Scheduler + Inbox + Graph` |
-| 协作 | 多角色多智能体（参谋 Agent / 研判 / 建议 / 批准） | 切合 `Graph / AgentNode / Router` |
-| 模型 | 结构化战场/业务对象 | 切合 `ontology` |
-| 正确性 | 账目平账 + 审计留痕 + 可复盘 | 切合 `tx / govern / state / observability` |
-| 范围外 | 毫秒实时、GIS、海量文档、分布式 | 明确外挂，不进入框架计分 |
+| GET | `/` | 浏览器控制台（HTML） |
+| GET | `/health` | 状态：订单数、pump、队列长度、LLM 模式/模型、capabilities |
+| GET | `/metrics` | Prometheus 文本指标 |
+| POST | `/events` | 事件入队。Body：`{kind, source, payload, round}`；返回 `{ev_id, seq, kind, status:"queued"}` |
+| GET | `/events` | 事件回执列表（`limit`、`offset`） |
+| GET | `/events/{ev_id}` | 单事件回执（`queued` / `processed`） |
+| POST | `/games/{game_id}/pump` | 手动消费一次待处理事件（返回 `processed_count` / `denied` / `pending_left`） |
+| GET | `/approvals` | 待批命令列表 |
+| GET | `/interrupts` | 框架 Interrupt（HITL）待处理列表 |
+| POST | `/approvals/{order_id}` | 批准/驳回。Body：`{approve: bool}`；返回 `interrupt_token`（走框架 Interrupt） |
+| GET | `/games/{game_id}/replay` | 复盘：`orders` / `records` / `timeline`（节点时序） |
+| GET | `/situation/{unit_id}` | 邻域态势（`depth` 默认 2），返回链接列表 |
+| GET | `/experience/stats` | 战例库召回缓存统计 |
+| GET | `/tenants` | 租户配额与用量快照 |
 
-## 目录约定（规划）
+事件 `payload` 字段约定：`kind`、`order_id`、`unit_id`、`target_id`、`threat`(0–1)、`text`、
+`tenant`（租户）、`tokens`（配额预估消耗）。
 
-```
-smart-command-deck/
-├── docs/
-│   └── technical-roadmap.md      # 详细技术路线（本项目的实施主线）
-├── app/
-│   ├── core/                     # 装配：Config / components 门面 / 依赖注入
-│   ├── domain/                   # ontology 领域模型 + 动作 + 规则（对接框架 ontology）
-│   ├── engine/                   # 回合时钟 / 事件泵 / Graph 蓝图 / HITL 状态
-│   ├── api/                      # 接入入口（事件 API / 批准 API / 复盘导出）
-│   └── main.py                   # 单机 Supervisor 入口
-├── tests/
-└── pyproject.toml                # 依赖：agentorchestra（本地 editable / git tag）
-```
+## 配置
 
-## 接入真实 LLM
-
-1. 复制 `.env.example` 为 `.env`（已被 gitignore，不会提交）并填写：
+`.env`（与 `.env.example` 同构，已被 `.gitignore` 忽略）：
 
 ```env
 LLM_MODEL_ID=minimax-m3
@@ -43,123 +109,69 @@ LLM_BASE_URL=https://api.minimax.chat/v1
 LLM_API_KEY=sk-xxx
 ```
 
-2. 重启服务后，`GET /health` 会显示 `llm_mode:"real"` 与 `llm_model`；否则自动回退离线 Mock。
-3. 研判 Agent 由 `app/core/llm_factory.py::build_intel_agent` 构造（读 .env/环境变量，可注入替换）。
-
-## 性能与深度应用
-
-本项目以 **深度使用 agentorchestra + 性能优秀** 为目标：
-
-- 深度应用清单与后续路线：[docs/deep-adoption.md](docs/deep-adoption.md)
-- 性能基准（自动生成）：[docs/perf-report.md](docs/perf-report.md)，运行 `python scripts/bench.py`
-- 验收/压测报告（自动生成）：[docs/acceptance-report.md](docs/acceptance-report.md)，运行 `python scripts/acceptance.py`
-- 容量压测报告（2000 事件 / 8 局并发）：[docs/capacity-report.md](docs/capacity-report.md)，运行 `python scripts/capacity.py`
-- 单机容量与配置建议（含扩容阈值）：[docs/capacity-sizing.md](docs/capacity-sizing.md)
-- 真实模型端到端压测：`docs/llm-e2e-report.md`，运行 `python scripts/llm_e2e.py`
-- 第一轮优化（已落地）：
-  - EventBus/ReplayStore 改 **append-only JSONL**（去掉整文件重写，O(n)→O(1)）
-  - **复用 Agent 与 GraphScheduler**（避免每事件重复构造）
-  - 指标埋点 + `GET /metrics`（Prometheus 文本）
-- 基准（单机 · MockLLM）：EventBus enqueue ≈1.2 万 ops/s、mark ≈4.6 万 ops/s、Deck ≈230 events/s、Coordinator ≈470 tx/s
-
-## 密钥安全（重要）
-
-- **API Key 只放 `.env`**（已被 `.gitignore` 忽略，永不提交/推送）；仓库只保留占位模板 `.env.example`。
-- 已内置三道防线：
-  1. `.gitignore`：忽略 `.env`、`.env.*`、`*.key`、`*.pem`、`secrets/` 等；
-  2. 本地 **pre-commit 钩子**（`.githooks/pre-commit`）：提交前扫描已跟踪文件，命中疑似密钥即阻止；
-     首次克隆后启用：`git config core.hooksPath .githooks`
-  3. CI 步骤 `python scripts/check_secrets.py`：远端同样拦截。
-- 手动自检：`python scripts/check_secrets.py`；测试：`pytest tests/test_no_secrets.py`。
-- 若不慎提交过密钥：立即在平台**吊销/轮换**，再从历史中移除（`git filter-repo`），不要仅删除文件。
-
-## 关键文档
-- [详细技术路线](docs/technical-roadmap.md)：从 M0 到 M5 的分步实施方案、架构与验收标准。
-- [运行与运维手册](docs/operations.md)：启动/备份/上线检查清单（单机版）。
-
-## 安装
-
-> 本项目统一使用 **llm 环境** 解释器：`D:\python\miniconda\envs\llm\python.exe`
-
-```bash
-LLM_PY="D:/python/miniconda/envs/llm/python.exe"
-
-# 1. 安装框架（同级目录，开发期 editable）
-"$LLM_PY" -m pip install -e ../agentorchestra
-
-# 2. 安装本工程（开发依赖）
-"$LLM_PY" -m pip install -e ".[dev]"
-"$LLM_PY" -m pip install fastapi uvicorn    # API 层
-```
-
-## 运行
-
-```bash
-# M0 离线冒烟
-"$LLM_PY" -m app.main --smoke
-
-# 启动 API 服务（uvicorn，单机；含常驻 pump）
-"$LLM_PY" -m app.api.launch          # http://127.0.0.1:8000
-# 或安装后：smart-deck-api
-
-# 浏览器控制台（入队事件 / 待批批准 / 事件回执 / 复盘）
-#   http://127.0.0.1:8000/
-
-# 常用接口
-POST /events                        # 事件入队 {kind,source,payload,round}
-POST /games/{game_id}/pump          # 消费待处理事件并跑推演图（新事件/批准续跑）
-GET  /approvals                     # 待批命令列表
-GET  /interrupts                    # 框架 Interrupt（HITL）待处理列表
-GET  /experience/stats              # 战例库召回缓存统计
-GET  /tenants                       # 租户配额与用量快照
-POST /approvals/{order_id}          # 批准/驳回 {approve: bool}
-GET  /events?limit=&offset=         # 事件回执列表（分页）
-GET  /games/{game_id}/replay        # 复盘：orders/records + 节点时序 timeline
-GET  /situation/{unit_id}?depth=    # 邻域态势（GraphStore 关系推理）
-GET  /metrics                       # Prometheus 文本指标（含 SLO：事件时延/审批等待）
-GET  /health
-
-# 测试
-"$LLM_PY" -m pytest tests
-```
-
-## 当前进度
-
-| 里程碑 | 状态 | 说明 |
+| 环境变量 | 默认 | 作用 |
 |---|---|---|
-| M0 工程骨架 | ✅ 通过 | pyproject + 目录结构 + 离线冒烟（SimpleAgent + MockLLM） |
-| M1 领域建模 | ✅ 通过 | ontology 4 类对象 + 6 类动作 + engine.mount 挂工具 |
-| M2 回合时钟+事件泵 | ✅ 通过 | EventBus(JSON)+事件契约 + 最小研判图(entry→intel Agent→record) + 重启去重 |
-| M3 完整 DAG+HITL | ✅ 通过 | 分级路由(low/high) + approve HITL 续跑(approved/rejected→execute/settle) |
-| M4 账目+权限+审计 | ✅ 通过 | 事务补偿(resupply 失败回滚)、RBAC 权限矩阵、AuditManager 审计(含被拒留痕) |
-| M5 复盘+观测+加固 | ✅ 通过 | 一键剧本复盘导出、Prometheus 指标、3 局并发冒烟、运维手册 |
+| `LLM_MODEL_ID` / `LLM_API_KEY` / `LLM_BASE_URL` | 空 | 真实模型；缺失则回退离线 `MockLLM` |
+| `LLM_TIMEOUT` | 60 | 单次调用超时（秒） |
+| `LLM_MAX_RETRIES` | 3 | 调用重试次数 |
+| `LLM_RETRY_BASE_DELAY` | 1.0 | 重试退避基数（秒） |
+| `LLM_CACHE_SIZE` | 256 | 响应缓存条数（0=关闭） |
+| `LLM_CACHE_TTL` | 3600 | 缓存有效期（秒） |
+| `DECK_MAX_CONCURRENCY` | 1 | 单批事件并发度 |
+| `DECK_TENANT_QUOTA` | 100000 | 每租户 token 配额 |
+| `TRACE_ENABLED` | 1 | 是否开启 TraceLogger |
+| `TRACE_DIR` | data/traces | 轨迹输出目录 |
+| `OTEL_ENDPOINT` | 空 | 配置后开启 OTLP trace 导出 |
 
-## 扩展功能（②③④）
-| 项 | 状态 | 说明 |
-|---|---|---|
-| ② SQLite 持久化 + 续跑 | ✅ | `app/domain/persist.py`：ontology 落 SQLite，重开引擎可续跑 |
-| ③ FastAPI API 层 | ✅ | `app/api/server.py` + `app/api/launch.py`：`/events /games/{id}/pump /approvals /approvals/{id} /games/{id}/replay`（已实测启动） |
-| ④ Coordinator 事务整合 | ✅ | `app/domain/coord_ledger.py`：幂等重放 / 补偿回滚 / DLQ；含 Python3.10 `asyncio.timeout` 兼容垫片（`app/core/compat.py`） |
+## 核心流程（函数级）
 
-## 里程碑验收速览
+1. 事件入队：`POST /events` → `EventBus.enqueue`（`app/engine/event_bus.py`），append-only JSONL。
+2. 常驻消费：`PumpWorker.run` → `service.process_pending`（`app/engine/service.py`）。
+3. 逐事件：`service._run_event` 取 `tenant/tokens`（`_tenant_of`）→ `TenantGovernor.charge`（超限进入
+   `denied`）→ `GraphScheduler.execute` 跑 `deck.build_deck_graph`。
+4. DAG：`entry → route(低/高) → record | intel(AgentNode) → create(待批命令) → approve(Interrupt) →
+   execute / settle`（`app/engine/deck.py`）。
+5. HITL：`approve` 节点停下 → `POST /approvals/{order_id}` 调 `interrupts.resolve_approval`
+   （框架 `resolve_interrupt`）→ `InterruptResumer` 触发 `approval_resume_handler`（落审批 + 入队续跑）→
+   泵从 `approve` 入口继续执行。
+6. 观测：每事件记录 `deck_event_latency_seconds`；审批记录 `deck_approval_wait_seconds`；
+   `TraceLogger` 输出每局 JSONL+HTML（`data/traces`）。
+7. 战例：事件成功处置后 `service._save_case` 写入 `ExperienceStore`；下次研判前 `IntelAgentNode`
+   调 `recall_fn` 把历史战例拼进任务。
+
+## 数据与存储
+
+| 路径 | 内容 |
+|---|---|
+| `data/games.db` | Ontology 对象存储（SQLite）：unit/target/order/stock/record |
+| `data/state.db` | 框架 CheckpointStore：图 Inbox、iteration、Interrupt、锁、幂等、DLQ、审计 |
+| `data/events.json` | EventBus 事件与已处理标记（每行一个 JSON） |
+| `data/replay.json` | 每局节点时序（NodeEvent） |
+| `data/experience.jsonl` | 战例库（内容/类型/标签/重要度） |
+| `data/traces/` | TraceLogger 轨迹（JSONL + HTML） |
+
+`data/`、`*.db`、`server.pid`、`.env` 均被 `.gitignore` 忽略。
+
+## 测试与验收
 
 ```bash
-LLM_PY="D:/python/miniconda/envs/llm/python.exe"
-"$LLM_PY" -m pytest tests       # 24 passed：M1~M5 + ②③④
-"$LLM_PY" -m ruff check app      # All checks passed
-"$LLM_PY" -m app.main --smoke    # M0 离线冒烟
+"$LLM_PY" -m pytest tests -q          # 62 用例
+"$LLM_PY" -m ruff check app           # 代码检查
+"$LLM_PY" scripts/acceptance.py       # 11 项端到端验收 → docs/acceptance-report.md
+"$LLM_PY" scripts/capacity.py         # 容量压测 → docs/capacity-report.md
+"$LLM_PY" scripts/bench.py            # 组件基准 → docs/perf-report.md
+"$LLM_PY" scripts/bench_llm.py        # 真实模型延迟 → docs/llm-perf-report.md
+"$LLM_PY" scripts/llm_e2e.py          # 真实模型端到端 → docs/llm-e2e-report.md
+"$LLM_PY" scripts/check_secrets.py    # 密钥扫描
 ```
 
-## 工程目录
+- [架构与实现](docs/architecture.md)
+- [运维手册](docs/operations.md)
+- [框架集成说明](docs/integration.md)
+- [单机容量与配置建议](docs/capacity-sizing.md)
 
-```
-smart-command-deck/
-├── docs/technical-roadmap.md   # 详细技术路线
-├── app/
-│   ├── main.py                 # 单机入口（--smoke 冒烟）
-│   ├── core/                   # 装配层（Config / Components / MockLLM）
-│   ├── domain/                 # ontology 领域模型（M1 开始实现）
-│   ├── engine/                 # 推演引擎（M2 开始实现）
-│   └── api/                    # 事件/批准/复盘 API（M3 开始实现）
-├── tests/
-└── pyproject.toml
+## 密钥安全
+
+- 密钥只放 `.env`（gitignore）；仓库仅保留占位模板 `.env.example`。
+- 三层防护：`.gitignore` 忽略规则、`scripts/check_secrets.py` 扫描、`.githooks/pre-commit` 提交前拦截、
+  CI 步骤拦截；`tests/test_no_secrets.py` 断言已跟踪文件中无密钥。
