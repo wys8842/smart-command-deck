@@ -11,6 +11,7 @@ import json
 import threading
 import time
 from collections import OrderedDict
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from agentorchestra.capability.memory import MemoryManager, MemoryType
@@ -19,7 +20,7 @@ from app.core.llm_factory import build_config
 
 
 class ExperienceStore:
-    """战例库（JSONL 持久化 + 召回缓存）。"""
+    """战例库：内存检索 + append-only JSONL 持久化（O(1) 写入）。"""
 
     def __init__(
         self,
@@ -29,29 +30,72 @@ class ExperienceStore:
         cache_ttl: float = 300.0,
     ):
         cfg = build_config(
-            memory_backend="jsonl",
-            memory_jsonl_path=path,
+            memory_backend="memory",          # 内存检索（快）
             memory_embedding_enabled=False,
             memory_namespace=namespace,
         )
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.namespace = namespace
         self.manager = MemoryManager.from_config(cfg, default_namespace=namespace)
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl
         self._cache: "OrderedDict[str, Tuple[float, List[str]]]" = OrderedDict()
         self._lock = threading.RLock()
+        self._fh = None
         self.hits = 0
         self.misses = 0
+        self._load_file()
+
+    # ---------------- 持久化 ----------------
+
+    def _load_file(self) -> None:
+        if not self.path.exists():
+            return
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            try:
+                self.manager.remember(
+                    rec.get("content", ""),
+                    type=MemoryType(rec.get("type", "episode")),
+                    tags=rec.get("tags") or [],
+                    importance=float(rec.get("importance", 0.7)),
+                    namespace=self.namespace,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+
+    def close(self) -> None:
+        if self._fh is not None:
+            try:
+                self._fh.close()
+            finally:
+                self._fh = None
 
     # ---------------- 写入 ----------------
 
     def remember_case(self, kind: str, summary: str, advice: str,
                       tags: Optional[List[str]] = None, importance: float = 0.7) -> str:
         content = f"[{kind}] 事件: {summary} | 处置: {advice}"
-        return self.manager.remember(
+        entry_id = self.manager.remember(
             content, type=MemoryType.EPISODE,
             tags=tags or [kind], importance=importance, namespace=self.namespace,
         )
+        # O(1) 追加到 JSONL（不经过 JsonlBackend 的逐条开/关文件）
+        if self._fh is None:
+            self._fh = self.path.open("a", encoding="utf-8")
+        self._fh.write(json.dumps({
+            "content": content, "type": MemoryType.EPISODE.value,
+            "tags": tags or [kind], "importance": importance,
+        }, ensure_ascii=False) + "\n")
+        self._fh.flush()
+        return entry_id
 
     # ---------------- 召回 ----------------
 
