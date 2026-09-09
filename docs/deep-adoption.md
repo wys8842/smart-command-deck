@@ -20,9 +20,8 @@
 ## 2. 待深化的方向（按价值排序）
 
 1. **Capability 注册表**：用 `runtime/capabilities` 统一装配 trace/memory/checkpoint 等特性。
-2. **可观测深化**：`TraceLogger` 每局 JSONL/HTML + 可选 OTLP；SLO 指标（回合耗时、审批时长）。
-3. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
-4. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
+2. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
+3. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
 
 ## 3. 性能基线（`python scripts/bench.py`）
 
@@ -80,3 +79,9 @@ D:/python/miniconda/envs/llm/python.exe -m pytest tests -q          # 回归
    —— 事件处置成功后把"事件+研判结论"沉淀为 `MemoryType.EPISODE`（JSONL 持久化，
    关闭 embedding 走关键词检索）；研判前召回相似战例拼入任务；
    召回结果 **LRU+TTL 缓存**（`GET /experience/stats` 查看命中率）。
+
+6. **全链路追踪 + SLO**：`app/core/tracing.py`
+   —— `TraceLogger` 每局 JSONL+HTML（`TRACE_DIR`，默认 `data/traces`）；
+   可选 OTLP（`OTEL_ENDPOINT` 存在时经 `Components.enable_otel_trace` 开启）；
+   SLO 指标 `deck_event_latency_seconds{kind}`、`deck_approval_wait_seconds{decision}`、
+   `deck_events_processed_total`、`deck_pump_cycle_seconds`（`GET /metrics`）。

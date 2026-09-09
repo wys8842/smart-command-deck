@@ -71,6 +71,7 @@ async def process_pending(
     async def _run_event(event) -> None:
         entry = "approve" if event.kind == "approval_result" else None
         errors: List[str] = []
+        _t = time.monotonic()
         res = await scheduler.execute(
             graph,
             event_message(event),
@@ -78,6 +79,10 @@ async def process_pending(
             entry_node=entry,
             on_node_error=lambda e: errors.append(str(e.error)),
         )
+        from app.core.tracing import observe
+
+        observe("deck_event_latency_seconds", time.monotonic() - _t,
+                {"kind": event.kind})
         if errors:
             raise RuntimeError(f"事件 {event.ev_id} 推演失败: {errors}")
         if replay_store is not None:
@@ -101,10 +106,15 @@ async def process_pending(
                                                recall_fn=recall_fn)
                 local_sched = GraphScheduler(store=state_store, max_iterations=8)
                 entry = "approve" if ev.kind == "approval_result" else None
+                _t = time.monotonic()
                 res = await local_sched.execute(
                     local_graph, event_message(ev), thread_id=thread_id,
                     entry_node=entry,
                 )
+                from app.core.tracing import observe
+
+                observe("deck_event_latency_seconds", time.monotonic() - _t,
+                        {"kind": ev.kind})
                 if replay_store is not None:
                     replay_store.append_run(
                         thread_id, ev.ev_id,

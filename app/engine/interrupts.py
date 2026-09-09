@@ -68,6 +68,17 @@ async def resolve_approval(state_store: Any, order_id: str, decision: bool,
     if intr is None:
         return None
     await state_store.resolve_interrupt(intr.token, {"approve": decision})
+    # SLO：审批等待时长（从 interrupt 创建到人工决策）
+    try:
+        from datetime import datetime
+
+        from app.core.tracing import observe
+
+        wait = (datetime.now() - intr.created_at).total_seconds()
+        observe("deck_approval_wait_seconds", max(wait, 0.0),
+                {"decision": "approve" if decision else "reject"})
+    except Exception:  # noqa: BLE001
+        pass
     return intr.token
 
 

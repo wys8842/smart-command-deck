@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.api.ui import ui_html
 from app.core.llm_factory import build_intel_agent, llm_mode
+from app.core.tracing import build_trace_config, init_otel
 from app.domain.persist import open_persistent_engine
 from app.domain.state_store import ensure_ready
 from app.engine.background import PumpWorker
@@ -55,6 +56,8 @@ def create_app(
     state_store: Optional[Any] = None,
     max_concurrency: int = 1,
     experience: Optional[Any] = None,
+    trace: bool = False,
+    trace_dir: str = "data/traces",
 ) -> FastAPI:
     """构造 API 应用。
 
@@ -82,6 +85,9 @@ def create_app(
         factory = intel_agent_factory
     elif config is not None:
         factory = lambda: build_intel_agent(config=config)  # noqa: E731
+    elif trace:
+        factory = lambda: build_intel_agent(  # noqa: E731
+            config=build_trace_config(trace_dir))
     else:
         # 无显式工厂/配置：build_intel_agent 会读 .env/环境变量，
         # 配好 LLM 则用真实模型，否则自动回退 MockLLM。
@@ -105,6 +111,7 @@ def create_app(
     async def lifespan(_app: FastAPI):
         if state_store is not None:
             await ensure_ready(state_store)
+        init_otel()  # 若配置 OTEL_ENDPOINT 则开启 OTLP trace
         if resumer is not None:
             await resumer.start()
         if worker is not None:

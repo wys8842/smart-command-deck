@@ -29,6 +29,8 @@ app = create_app(
     state_store=open_state_store(),
     max_concurrency=int(os.getenv("DECK_MAX_CONCURRENCY", "1")),
     experience=ExperienceStore("data/experience.jsonl"),
+    trace=os.getenv("TRACE_ENABLED", "1") not in ("0", "false", "False"),
+    trace_dir=os.getenv("TRACE_DIR", "data/traces"),
 )
 
 
