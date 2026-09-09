@@ -74,6 +74,21 @@ class EventBus:
             "status": "processed" if ev_id in self._data["processed"] else "queued",
         }
 
+    def list_receipts(self, limit: int = 50) -> list[dict]:
+        """列出最近事件回执（最新在前）。"""
+        processed = set(self._data["processed"])
+        out = []
+        for rec in self._data["events"]:
+            out.append({
+                "ev_id": rec.get("ev_id"),
+                "seq": rec.get("seq", 0),
+                "kind": rec.get("kind"),
+                "source": rec.get("source"),
+                "ts": rec.get("ts"),
+                "status": "processed" if rec.get("ev_id") in processed else "queued",
+            })
+        return list(reversed(out))[:limit]
+
     def pending(self) -> list[Event]:
         processed = set(self._data["processed"])
         return [Event(**e) for e in self._data["events"] if e["ev_id"] not in processed]

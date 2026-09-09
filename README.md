@@ -58,8 +58,12 @@ LLM_PY="D:/python/miniconda/envs/llm/python.exe"
 # M0 离线冒烟
 "$LLM_PY" -m app.main --smoke
 
-# 启动 API 服务（uvicorn，单机）
+# 启动 API 服务（uvicorn，单机；含常驻 pump）
 "$LLM_PY" -m app.api.launch          # http://127.0.0.1:8000
+# 或安装后：smart-deck-api
+
+# 浏览器控制台（入队事件 / 待批批准 / 事件回执 / 复盘）
+#   http://127.0.0.1:8000/
 
 # 常用接口
 POST /events                        # 事件入队 {kind,source,payload,round}

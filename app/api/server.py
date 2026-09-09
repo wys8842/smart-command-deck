@@ -6,13 +6,15 @@ from contextlib import asynccontextmanager
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from app.api.ui import ui_html
 from app.core.llm_factory import build_intel_agent
 from app.domain.persist import open_persistent_engine
 from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
-from app.engine.hitl import approve_order, pending_orders
+from app.engine.hitl import approval_event, approve_order, pending_orders
 from app.engine.replay import export_timeline
 from app.engine.service import default_intel_factory, process_pending
 
@@ -75,6 +77,11 @@ def create_app(
     app = FastAPI(title="Smart Command Deck API", version="0.2.0", lifespan=lifespan)
     app.state.worker = worker
 
+    @app.get("/", response_class=HTMLResponse)
+    def index() -> str:
+        """浏览器控制台（入队/待批/批准/复盘）。"""
+        return ui_html()
+
     @app.get("/health")
     def health() -> Dict[str, Any]:
         return {
@@ -98,6 +105,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="事件不存在")
         return rec
 
+    @app.get("/events")
+    def list_events(limit: int = 50) -> Dict[str, Any]:
+        return {"events": bus.list_receipts(limit=limit)}
+
     @app.post("/games/{game_id}/pump")
     async def pump_once(game_id: str) -> Dict[str, Any]:
         """手动消费一次待处理事件。"""
@@ -117,7 +128,10 @@ def create_app(
             result = approve_order(store, order_id, body.approve)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        return result
+        # 自动入队“批准续跑”事件 → 常驻 pump 会执行 execute/settle
+        cont = approval_event(order_id, body.approve)
+        bus.enqueue(cont)
+        return {**result, "continuation_ev_id": cont.ev_id}
 
     @app.get("/games/{game_id}/replay")
     def replay(game_id: str) -> Dict[str, Any]:

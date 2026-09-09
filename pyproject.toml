@@ -18,6 +18,9 @@ dev = [
     "fastapi>=0.110",
 ]
 
+[project.scripts]
+smart-deck-api = "app.api.launch:main"
+
 [tool.setuptools.packages.find]
 include = ["app*"]
 

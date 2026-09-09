@@ -57,10 +57,10 @@ def test_pump_after_approval_continues(tmp_path):
     client.post("/games/g1/pump")
     assert client.get("/approvals").json()["pending"]
 
-    # 人工批准后，再入队一条 approval_result 续跑事件并 pump
-    client.post("/approvals/o9", json={"approve": True})
-    client.post("/events", json={"kind": "approval_result", "source": "commander",
-                                 "payload": {"order_id": "o9", "decision": True}})
+    # 人工批准（接口自动入队 approval_result 续跑事件）→ pump 续跑执行
+    resp = client.post("/approvals/o9", json={"approve": True})
+    assert resp.status_code == 200
+    assert resp.json().get("continuation_ev_id")
     client.post("/games/g1/pump")
 
     assert engine.object_store.get("order", "o9")["status"] == "executed"
