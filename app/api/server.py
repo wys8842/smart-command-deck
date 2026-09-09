@@ -141,6 +141,8 @@ def create_app(
             "queued": len(bus.pending()),
             "llm_mode": mode,
             "llm_model": model,
+            "capabilities": (["battle_experience"] if experience is not None else [])
+                            + ["telemetry"],
         }
 
     @app.get("/metrics")

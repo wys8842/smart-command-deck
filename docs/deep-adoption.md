@@ -19,9 +19,8 @@
 
 ## 2. 待深化的方向（按价值排序）
 
-1. **Capability 注册表**：用 `runtime/capabilities` 统一装配 trace/memory/checkpoint 等特性。
-2. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
-3. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
+1. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
+2. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
 
 ## 3. 性能基线（`python scripts/bench.py`）
 
@@ -85,3 +84,8 @@ D:/python/miniconda/envs/llm/python.exe -m pytest tests -q          # 回归
    可选 OTLP（`OTEL_ENDPOINT` 存在时经 `Components.enable_otel_trace` 开启）；
    SLO 指标 `deck_event_latency_seconds{kind}`、`deck_approval_wait_seconds{decision}`、
    `deck_events_processed_total`、`deck_pump_cycle_seconds`（`GET /metrics`）。
+
+7. **Capability 注册表**：`app/core/capabilities.py`
+   —— `BattleExperienceCapability`（装配战例库 + 注册 `recall_battle_case` 工具）、
+   `TelemetryCapability`（Prometheus/OTLP）；新建 Agent 时经框架 `CapabilityRegistry`
+   统一 install；`GET /health` 返回 `capabilities`。
