@@ -114,6 +114,14 @@ async def process_pending(
         for event in pending:
             await _run_event(event)
 
+    if state_store is not None:
+        try:
+            from app.engine.interrupts import ensure_interrupts
+
+            await ensure_interrupts(store, state_store, thread_id)
+        except Exception:  # noqa: BLE001
+            pass
+
     _record_metrics(len(processed), time.monotonic() - _t0)
     return {
         "processed": processed,

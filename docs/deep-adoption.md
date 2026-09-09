@@ -19,13 +19,11 @@
 
 ## 2. 待深化的方向（按价值排序）
 
-1. **HITL 用 state.Interrupt**：以框架的 Interrupt/Thread 表达人工批准与续跑，
-   与 checkpoint 统一，减少自定义审批事件。
-2. **capability/memory 战例召回**：沉淀成功处置案例；性能上用 TTL + 懒加载 + 向量缓存。
-3. **Capability 注册表**：用 `runtime/capabilities` 统一装配 trace/memory/checkpoint 等特性。
-4. **可观测深化**：`TraceLogger` 每局 JSONL/HTML + 可选 OTLP；SLO 指标（回合耗时、审批时长）。
-5. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
-6. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
+1. **capability/memory 战例召回**：沉淀成功处置案例；性能上用 TTL + 懒加载 + 向量缓存。
+2. **Capability 注册表**：用 `runtime/capabilities` 统一装配 trace/memory/checkpoint 等特性。
+3. **可观测深化**：`TraceLogger` 每局 JSONL/HTML + 可选 OTLP；SLO 指标（回合耗时、审批时长）。
+4. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
+5. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
 
 ## 3. 性能基线（`python scripts/bench.py`）
 
@@ -73,3 +71,8 @@ D:/python/miniconda/envs/llm/python.exe -m pytest tests -q          # 回归
    （`process_pending(max_concurrency=...)`，`DECK_MAX_CONCURRENCY`）。
 
 实测（minimax-m3）：**p50 ≈ 2.3s，p95 ≈ 5.9s，缓存命中 ≈ 0.1ms**（见 `docs/llm-perf-report.md`）。
+
+4. **HITL 统一到框架 Interrupt**：`app/engine/interrupts.py`
+   —— 待批命令生成 `Interrupt(reason=order_approval)`；`POST /approvals/{id}` 走
+   `resolve_interrupt`，`InterruptResumer` 轮询 RESUMED 触发 handler（落审批 + 入队续跑）；
+   `GET /interrupts` 查看待处理。已实测 o8：批准 → 续跑 → `executed` + 结算记录。

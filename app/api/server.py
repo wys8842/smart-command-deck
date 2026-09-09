@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Callable, Dict, Optional
 
 from agentorchestra.components import Components
+from agentorchestra.orchestration.state.interrupt import InterruptResumer
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
@@ -17,6 +18,12 @@ from app.domain.state_store import ensure_ready
 from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
 from app.engine.hitl import approval_event, approve_order, pending_orders
+from app.engine.interrupts import (
+    REASON_APPROVAL,
+    approval_resume_handler,
+    list_pending,
+    resolve_approval,
+)
 from app.engine.replay import ReplayStore, export_timeline
 from app.engine.service import process_pending
 
@@ -84,18 +91,31 @@ def create_app(
                         replay_store=replay_store, state_store=state_store,
                         max_concurrency=max_concurrency) if pump else None
 
+    resumer = None
+    if state_store is not None:
+        resumer = InterruptResumer(state_store, poll_interval=1.0)
+        resumer.register_handler(
+            REASON_APPROVAL,
+            approval_resume_handler(store, bus, DEFAULT_GAME),
+        )
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         if state_store is not None:
             await ensure_ready(state_store)
+        if resumer is not None:
+            await resumer.start()
         if worker is not None:
             worker.start()
         yield
         if worker is not None:
             await worker.stop()
+        if resumer is not None:
+            await resumer.stop()
 
     app = FastAPI(title="Smart Command Deck API", version="0.2.0", lifespan=lifespan)
     app.state.worker = worker
+    app.state.resumer = resumer
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -157,13 +177,31 @@ def create_app(
     def approvals() -> Dict[str, Any]:
         return {"pending": pending_orders(store)}
 
+    @app.get("/interrupts")
+    async def interrupts() -> Dict[str, Any]:
+        """框架 Interrupt（HITL）待处理列表。"""
+        items = await list_pending(state_store)
+        return {"pending": [i.to_dict() for i in items]}
+
     @app.post("/approvals/{order_id}")
-    def decision(order_id: str, body: ApproveIn) -> Dict[str, Any]:
+    async def decision(order_id: str, body: ApproveIn) -> Dict[str, Any]:
+        # 优先走框架 Interrupt：resolve 后由 InterruptResumer 续跑
+        token = await resolve_approval(state_store, order_id, body.approve)
+        if token is not None:
+            # 立即落库状态（幂等；resumer handler 会再次确认并入队续跑）
+            try:
+                approve_order(store, order_id, body.approve)
+            except ValueError:
+                pass
+            return {"order_id": order_id,
+                    "approval": "approved" if body.approve else "rejected",
+                    "interrupt_token": token}
+
+        # 未启用 state_store 或找不到 interrupt：回退旧路径
         try:
             result = approve_order(store, order_id, body.approve)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        # 自动入队“批准续跑”事件 → 常驻 pump 会执行 execute/settle
         cont = approval_event(order_id, body.approve)
         bus.enqueue(cont)
         return {**result, "continuation_ev_id": cont.ev_id}
