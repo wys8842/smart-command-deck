@@ -17,6 +17,7 @@ def test_ui_page_and_events_list(tmp_path):
     assert r.status_code == 200
     assert "智能推演指挥台" in r.text
     assert "待批命令" in r.text
+    assert "时间线" in r.text
 
     # 事件列表
     bus.enqueue(new_event("intel_report", "radar", {"text": "x"}))

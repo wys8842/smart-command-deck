@@ -9,7 +9,11 @@
 from __future__ import annotations
 
 from app.api.server import create_app
+from app.core.env import load_env
 from app.engine.replay import ReplayStore
+
+# 读取 .env（若存在）后再建应用，使真实 LLM 配置生效
+load_env()
 
 # 默认：SQLite data/games.db + EventBus data/events.json + 复盘时序 + 常驻 pump（可关）
 app = create_app(

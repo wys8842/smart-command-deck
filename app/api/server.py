@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app.api.ui import ui_html
-from app.core.llm_factory import build_intel_agent
+from app.core.llm_factory import build_intel_agent, llm_mode
 from app.domain.persist import open_persistent_engine
 from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
@@ -89,11 +89,14 @@ def create_app(
 
     @app.get("/health")
     def health() -> Dict[str, Any]:
+        mode, model = llm_mode()
         return {
             "status": "ok",
             "orders": store.count("order"),
             "pump": worker is not None,
             "queued": len(bus.pending()),
+            "llm_mode": mode,
+            "llm_model": model,
         }
 
     @app.post("/events", status_code=202)

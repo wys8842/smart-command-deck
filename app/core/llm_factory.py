@@ -30,6 +30,15 @@ def build_config(**overrides: Any) -> Config:
     return cfg
 
 
+def llm_mode() -> tuple[str, Optional[str]]:
+    """返回 (mode, model)：real=已配置 key+model；mock=回退离线。"""
+    model = os.getenv("LLM_MODEL_ID")
+    api_key = os.getenv("LLM_API_KEY")
+    if model and api_key:
+        return "real", model
+    return "mock", None
+
+
 def build_llm(
     model: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -60,4 +69,4 @@ def build_intel_agent(
     return SimpleAgent(name=name, llm=model, config=cfg, tool_registry=tool_registry)
 
 
-__all__ = ["build_config", "build_llm", "build_intel_agent"]
+__all__ = ["build_config", "build_llm", "build_intel_agent", "llm_mode"]

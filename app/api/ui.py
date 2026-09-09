@@ -33,6 +33,11 @@ UI_PAGE = """<!DOCTYPE html>
   .pending { background:#fef9c3; color:#854d0e; }
   pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; overflow:auto; max-height:320px; font-size:12px; }
   .muted { color:var(--mut); font-size:12.5px; }
+  .run { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:10px; }
+  .chain { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px; }
+  .node { background:#eef2f7; color:#1e293b; border-radius:8px; padding:4px 10px; font-size:12.5px; }
+  .node.hot { background:#fff7ed; color:#c2410c; }
+  .arr { color:var(--mut); font-size:12px; }
 </style>
 </head>
 <body>
@@ -75,11 +80,12 @@ UI_PAGE = """<!DOCTYPE html>
   </section>
 
   <section>
-    <h2>④ 复盘</h2>
+    <h2>④ 复盘（时间线）</h2>
     <div class="row">
-      <button class="ghost" onclick="loadReplay()">刷新复盘 timeline</button>
+      <button class="ghost" onclick="loadReplay()">刷新复盘</button>
+      <span class="muted">命令状态 · 结算记录 · 节点执行时序</span>
     </div>
-    <pre id="replay">（点击按钮加载）</pre>
+    <div id="replay"><span class="muted">加载中…</span></div>
   </section>
 </main>
 <script>
@@ -149,11 +155,64 @@ async function decide(orderId, approve) {
 
 async function loadReplay() {
   const data = await api('/games/default/replay');
-  document.getElementById('replay').textContent = JSON.stringify(data, null, 2);
+  renderReplay(data);
+}
+
+function pill(v) {
+  const cls = (v === 'executed' || v === 'processed' || v === 'completed' || v === 'approved')
+    ? 'processed' : (v === 'pending' ? 'pending' : 'queued');
+  return `<span class="pill ${cls}">${esc(v)}</span>`;
+}
+
+function renderReplay(data) {
+  const s = data.summary || {};
+  const orders = data.orders || [];
+  const records = data.records || [];
+  const runs = data.timeline || [];
+
+  let html = `<div class="row" style="margin-bottom:8px">
+    <span class="pill processed">orders ${s.orders || 0}</span>
+    <span class="pill processed">records ${s.records || 0}</span>
+    <span class="pill processed">settles ${s.settles || 0}</span>
+  </div>`;
+
+  html += '<div class="muted" style="margin-top:6px">命令</div><table><thead><tr>'
+        + '<th>order</th><th>kind</th><th>target</th><th>status</th><th>approval</th></tr></thead><tbody>';
+  html += orders.map(o => `<tr><td>${esc(o.order_id)}</td><td>${esc(o.kind)}</td>
+      <td>${esc(o.target_id || '-')}</td><td>${pill(o.status)}</td>
+      <td>${pill(o.approval)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">无</td></tr>';
+  html += '</tbody></table>';
+
+  html += '<div class="muted" style="margin-top:12px">结算记录</div><table><thead><tr>'
+        + '<th>record</th><th>kind</th><th>summary</th></tr></thead><tbody>';
+  html += records.map(r => `<tr><td>${esc(r.record_id)}</td><td>${esc(r.kind)}</td>
+      <td>${esc(r.summary || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">无</td></tr>';
+  html += '</tbody></table>';
+
+  html += '<div class="muted" style="margin-top:12px">节点时序</div>';
+  if (!runs.length) {
+    html += '<div class="muted">（暂无运行记录）</div>';
+  } else {
+    html += runs.map(run => {
+      const evs = run.events || [];
+      const starts = evs.filter(e => e.event_type === 'node_start').map(e => e.node_name);
+      const errs = evs.filter(e => e.event_type === 'node_error');
+      const chain = starts.map(n => `<span class="node">${esc(n)}</span>`).join('<span class="arr">→</span>');
+      const errLine = errs.length
+        ? `<div class="muted" style="color:#dc2626">errors: ${errs.map(e => esc(e.node_name + ': ' + e.error)).join('; ')}</div>` : '';
+      return `<div class="run">
+        <div class="muted">${esc(run.ts)} · ${esc(run.ev_id)} · ${pill(run.status)}</div>
+        <div class="chain">${chain || '<span class="muted">无节点</span>'}</div>
+        ${errLine}
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('replay').innerHTML = html;
 }
 
 refresh();
 setInterval(refresh, 3000);
+loadReplay();
 </script>
 </body>
 </html>
