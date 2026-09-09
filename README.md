@@ -46,6 +46,18 @@ LLM_API_KEY=sk-xxx
 2. 重启服务后，`GET /health` 会显示 `llm_mode:"real"` 与 `llm_model`；否则自动回退离线 Mock。
 3. 研判 Agent 由 `app/core/llm_factory.py::build_intel_agent` 构造（读 .env/环境变量，可注入替换）。
 
+## 性能与深度应用
+
+本项目以 **深度使用 agentorchestra + 性能优秀** 为目标：
+
+- 深度应用清单与后续路线：[docs/deep-adoption.md](docs/deep-adoption.md)
+- 性能基准（自动生成）：[docs/perf-report.md](docs/perf-report.md)，运行 `python scripts/bench.py`
+- 第一轮优化（已落地）：
+  - EventBus/ReplayStore 改 **append-only JSONL**（去掉整文件重写，O(n)→O(1)）
+  - **复用 Agent 与 GraphScheduler**（避免每事件重复构造）
+  - 指标埋点 + `GET /metrics`（Prometheus 文本）
+- 基准（单机 · MockLLM）：EventBus enqueue ≈1.2 万 ops/s、mark ≈4.6 万 ops/s、Deck ≈230 events/s、Coordinator ≈470 tx/s
+
 ## 密钥安全（重要）
 
 - **API Key 只放 `.env`**（已被 `.gitignore` 忽略，永不提交/推送）；仓库只保留占位模板 `.env.example`。
@@ -96,6 +108,7 @@ GET  /approvals                     # 待批命令列表
 POST /approvals/{order_id}          # 批准/驳回 {approve: bool}
 GET  /events?limit=&offset=         # 事件回执列表（分页）
 GET  /games/{game_id}/replay        # 复盘：orders/records + 节点时序 timeline
+GET  /metrics                       # Prometheus 文本指标
 GET  /health
 
 # 测试

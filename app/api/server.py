@@ -5,8 +5,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any, Callable, Dict, Optional
 
+from agentorchestra.components import Components
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from app.api.ui import ui_html
@@ -60,6 +61,12 @@ def create_app(
     bus = bus or EventBus(events_path)
     store = engine.object_store
 
+    # 启用 Prometheus 文本指标收集器（幂等），供 /metrics 输出
+    try:
+        Components.enable_prometheus()
+    except Exception:  # noqa: BLE001
+        pass
+
     if intel_agent_factory is not None:
         factory = intel_agent_factory
     elif config is not None:
@@ -100,6 +107,15 @@ def create_app(
             "llm_mode": mode,
             "llm_model": model,
         }
+
+    @app.get("/metrics")
+    def metrics() -> PlainTextResponse:
+        """Prometheus 文本指标。"""
+        try:
+            text = Components.metrics_collector().render()
+        except Exception as e:  # noqa: BLE001
+            text = f"# metrics unavailable: {e}\n"
+        return PlainTextResponse(text)
 
     @app.post("/events", status_code=202)
     def ingest_event(body: EventIn) -> Dict[str, Any]:

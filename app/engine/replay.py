@@ -23,46 +23,75 @@ THREAT_HIGH = 0.9
 
 
 class ReplayStore:
-    """节点时序持久化（单机 JSON，按 thread_id 归局）。"""
+    """节点时序持久化（单机 append-only JSONL，按 thread_id 归局）。"""
 
     def __init__(self, path: str = "data/replay.json"):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._data: Dict[str, List] = self._load()
+        self._runs: List[Dict[str, Any]] = []
+        self._fh = None
+        self._load()
 
-    def _load(self) -> Dict[str, List]:
-        if self.path.exists():
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        text = self.path.read_text(encoding="utf-8")
+        stripped = text.lstrip()
+        if stripped.startswith("{"):  # 兼容旧整文件 JSON
             try:
-                return json.loads(self.path.read_text(encoding="utf-8"))
+                data = json.loads(text)
+                if isinstance(data, dict) and "runs" in data:
+                    self._runs = list(data.get("runs", []))
+                    self._rewrite()
+                    return
             except json.JSONDecodeError:
                 pass
-        return {"runs": []}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                self._runs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
 
-    def _save(self) -> None:
-        self.path.write_text(
-            json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+    def close(self) -> None:
+        if self._fh is not None:
+            try:
+                self._fh.close()
+            finally:
+                self._fh = None
+
+    def _rewrite(self) -> None:
+        self.close()
+        with self.path.open("w", encoding="utf-8") as f:
+            for r in self._runs:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
     def append_run(self, thread_id: str, ev_id: str, events: List[Dict[str, Any]],
                    status: str = "completed") -> None:
-        self._data["runs"].append({
+        rec = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "thread_id": thread_id,
             "ev_id": ev_id,
             "status": status,
             "events": events,
-        })
-        self._save()
+        }
+        self._runs.append(rec)
+        if self._fh is None:
+            self._fh = self.path.open("a", encoding="utf-8")
+        self._fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        self._fh.flush()
 
     def runs(self, thread_id: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
-        runs = self._data.get("runs", [])
+        runs = self._runs
         if thread_id:
             runs = [r for r in runs if r.get("thread_id") == thread_id]
         return list(reversed(runs))[:limit]
 
     def reset(self) -> None:
-        self._data = {"runs": []}
-        self._save()
+        self._runs = []
+        self._rewrite()
 
 
 def export_timeline(
