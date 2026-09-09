@@ -52,6 +52,7 @@ def test_high_event_waits_for_approval_then_executes():
 
     order = store.get("order", "o1")
     assert order is not None and order["approval"] == "pending"
+    assert "advice" in order["params"]  # 研判结论已随命令保存
 
     # 人工批准 → 续跑
     approve_order(store, "o1", True)

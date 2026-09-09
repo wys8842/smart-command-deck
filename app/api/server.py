@@ -16,7 +16,7 @@ from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
 from app.engine.hitl import approval_event, approve_order, pending_orders
 from app.engine.replay import ReplayStore, export_timeline
-from app.engine.service import default_intel_factory, process_pending
+from app.engine.service import process_pending
 
 
 class EventIn(BaseModel):
@@ -65,7 +65,9 @@ def create_app(
     elif config is not None:
         factory = lambda: build_intel_agent(config=config)  # noqa: E731
     else:
-        factory = default_intel_factory
+        # 无显式工厂/配置：build_intel_agent 会读 .env/环境变量，
+        # 配好 LLM 则用真实模型，否则自动回退 MockLLM。
+        factory = build_intel_agent
 
     worker = PumpWorker(engine, bus, poll_interval=poll_interval,
                         intel_agent_factory=factory, thread_id=DEFAULT_GAME,

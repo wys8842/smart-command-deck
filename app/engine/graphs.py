@@ -46,7 +46,8 @@ def _fmt_task(event: Any) -> str:
         kind = event.kind
         source = event.source
         payload = event.payload or {}
-    return f"[{kind}] {source}: {payload}"
+    return (f"请研判以下事件并给出简要处置建议（1-3 句）。"
+            f"类型={kind}，来源={source}，详情={payload}")
 
 
 def passthrough_entry(message: dict, ctx: Any) -> NodeOutput:

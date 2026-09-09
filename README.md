@@ -33,6 +33,19 @@ smart-command-deck/
 └── pyproject.toml                # 依赖：agentorchestra（本地 editable / git tag）
 ```
 
+## 接入真实 LLM
+
+1. 复制 `.env.example` 为 `.env`（已被 gitignore，不会提交）并填写：
+
+```env
+LLM_MODEL_ID=minimax-m3
+LLM_BASE_URL=https://api.minimax.chat/v1
+LLM_API_KEY=sk-xxx
+```
+
+2. 重启服务后，`GET /health` 会显示 `llm_mode:"real"` 与 `llm_model`；否则自动回退离线 Mock。
+3. 研判 Agent 由 `app/core/llm_factory.py::build_intel_agent` 构造（读 .env/环境变量，可注入替换）。
+
 ## 关键文档
 - [详细技术路线](docs/technical-roadmap.md)：从 M0 到 M5 的分步实施方案、架构与验收标准。
 - [运行与运维手册](docs/operations.md)：启动/备份/上线检查清单（单机版）。

@@ -5,6 +5,7 @@ HITL 续跑：高危事件首跑到 approve 后停下（order 保持 pending）�
 """
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -46,7 +47,9 @@ def route_fn(store: Any) -> Callable[[dict, NodeContext], NodeOutput]:
             label = "skip"
         else:
             label = "high" if threat_of(store, event) >= THREAT_HIGH else "low"
-        return NodeOutput(result=label, route=label, data={"event": event})
+        # 保留原始任务文本（供 intel 研判），route 仅用于条件边
+        return NodeOutput(result=message.get("task", label), route=label,
+                          data={"event": event})
 
     return _route
 
@@ -76,6 +79,7 @@ def order_creator(store: Any) -> Callable[[dict, NodeContext], NodeOutput]:
         event = _ev(message)
         payload = event.get("payload") or {}
         oid = payload.get("order_id") or f"ord-{uuid.uuid4().hex[:8]}"
+        advice = message.get("task", "")   # intel 节点产出的研判结论
         store.insert("order", {
             "order_id": oid,
             "kind": payload.get("kind", "strike"),
@@ -83,9 +87,10 @@ def order_creator(store: Any) -> Callable[[dict, NodeContext], NodeOutput]:
             "target_id": payload.get("target_id"),
             "status": "pending",
             "approval": "pending",
-            "params": str(payload),
+            "params": json.dumps({"payload": payload, "advice": advice},
+                                 ensure_ascii=False, default=str),
         })
-        return nd("order_created", order_id=oid, event=event)
+        return nd("order_created", order_id=oid, event=event, advice=advice)
 
     return _create
 
