@@ -59,6 +59,7 @@ def create_app(
     experience: Optional[Any] = None,
     trace: bool = False,
     trace_dir: str = "data/traces",
+    tenancy: Optional[Any] = None,
 ) -> FastAPI:
     """构造 API 应用。
 
@@ -98,7 +99,7 @@ def create_app(
                         intel_agent_factory=factory, thread_id=DEFAULT_GAME,
                         replay_store=replay_store, state_store=state_store,
                         max_concurrency=max_concurrency,
-                        experience=experience) if pump else None
+                        experience=experience, tenancy=tenancy) if pump else None
 
     resumer = None
     if state_store is not None:
@@ -184,7 +185,15 @@ def create_app(
             state_store=state_store,
             max_concurrency=max_concurrency,
             experience=experience,
+            tenancy=tenancy,
         )
+
+    @app.get("/tenants")
+    def tenants() -> Dict[str, Any]:
+        """租户配额与用量快照。"""
+        if tenancy is None:
+            return {"enabled": False}
+        return {"enabled": True, **tenancy.snapshot()}
 
     @app.get("/experience/stats")
     def experience_stats() -> Dict[str, Any]:

@@ -26,6 +26,7 @@ class PumpWorker:
         state_store: Any = None,
         max_concurrency: int = 1,
         experience: Any = None,
+        tenancy: Any = None,
     ):
         self.engine = engine
         self.bus = bus
@@ -36,6 +37,7 @@ class PumpWorker:
         self.state_store = state_store
         self.max_concurrency = max_concurrency
         self.experience = experience
+        self.tenancy = tenancy
         self._stop = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
         self.processed_total = 0
@@ -50,6 +52,7 @@ class PumpWorker:
             state_store=self.state_store,
             max_concurrency=self.max_concurrency,
             experience=self.experience,
+            tenancy=self.tenancy,
         )
         n = res["processed_count"]
         self.processed_total += n

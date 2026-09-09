@@ -68,6 +68,7 @@ async def process_pending(
     state_store: Any = None,
     max_concurrency: int = 1,
     experience: Any = None,
+    tenancy: Any = None,
 ) -> Dict[str, Any]:
     """消费 EventBus 中全部未处理事件并跑 deck 图。
 
@@ -86,18 +87,45 @@ async def process_pending(
 
     _t0 = time.monotonic()
     processed: List[str] = []
+    denied: List[str] = []
 
     async def _run_event(event) -> None:
         entry = "approve" if event.kind == "approval_result" else None
         errors: List[str] = []
-        _t = time.monotonic()
-        res = await scheduler.execute(
-            graph,
-            event_message(event),
-            thread_id=thread_id,
-            entry_node=entry,
-            on_node_error=lambda e: errors.append(str(e.error)),
-        )
+        tenant, tokens = _tenant_of(event)
+        if tenancy is not None:
+            from agentorchestra.governance.tenancy import QuotaExceeded
+
+            try:
+                tenancy.ensure(tenant)
+                tenancy.charge(tenant, tokens)
+            except QuotaExceeded:
+                from app.core.tracing import increment
+
+                increment("deck_quota_denied_total", 1, {"tenant": tenant})
+                bus.mark_processed(event.ev_id)
+                denied.append(event.ev_id)
+                return
+            _t = time.monotonic()
+            async with tenancy.scope(tenant):
+                res = await scheduler.execute(
+                    graph,
+                    event_message(event),
+                    thread_id=thread_id,
+                    entry_node=entry,
+                    on_node_error=lambda e: errors.append(str(e.error)),
+                )
+            tenancy.record_usage(tenant, "intel", tokens,
+                                 latency_ms=(time.monotonic() - _t) * 1000)
+        else:
+            _t = time.monotonic()
+            res = await scheduler.execute(
+                graph,
+                event_message(event),
+                thread_id=thread_id,
+                entry_node=entry,
+                on_node_error=lambda e: errors.append(str(e.error)),
+            )
         from app.core.tracing import observe
 
         observe("deck_event_latency_seconds", time.monotonic() - _t,
@@ -120,6 +148,20 @@ async def process_pending(
 
         async def _bounded(ev):
             async with sem:
+                tenant, tokens = _tenant_of(ev)
+                if tenancy is not None:
+                    from agentorchestra.governance.tenancy import QuotaExceeded
+
+                    try:
+                        tenancy.ensure(tenant)
+                        tenancy.charge(tenant, tokens)
+                    except QuotaExceeded:
+                        from app.core.tracing import increment
+
+                        increment("deck_quota_denied_total", 1, {"tenant": tenant})
+                        bus.mark_processed(ev.ev_id)
+                        denied.append(ev.ev_id)
+                        return
                 # 并发下不复用 Agent/Scheduler 内部可变状态：各自独立图
                 local_graph = build_deck_graph(
                     _reuse_factory(_with_capabilities(base_factory, experience, store)),
@@ -127,10 +169,19 @@ async def process_pending(
                 local_sched = GraphScheduler(store=state_store, max_iterations=8)
                 entry = "approve" if ev.kind == "approval_result" else None
                 _t = time.monotonic()
-                res = await local_sched.execute(
-                    local_graph, event_message(ev), thread_id=thread_id,
-                    entry_node=entry,
-                )
+                if tenancy is not None:
+                    async with tenancy.scope(tenant):
+                        res = await local_sched.execute(
+                            local_graph, event_message(ev), thread_id=thread_id,
+                            entry_node=entry,
+                        )
+                    tenancy.record_usage(tenant, "intel", tokens,
+                                         latency_ms=(time.monotonic() - _t) * 1000)
+                else:
+                    res = await local_sched.execute(
+                        local_graph, event_message(ev), thread_id=thread_id,
+                        entry_node=entry,
+                    )
                 from app.core.tracing import observe
 
                 observe("deck_event_latency_seconds", time.monotonic() - _t,
@@ -161,8 +212,20 @@ async def process_pending(
     return {
         "processed": processed,
         "processed_count": len(processed),
+        "denied": denied,
         "pending_left": len(bus.pending()),
     }
+
+
+def _tenant_of(event: Any):
+    """从事件 payload 取租户与预估 token 消耗。"""
+    payload = getattr(event, "payload", {}) or {}
+    tenant = str(payload.get("tenant") or "default")
+    try:
+        tokens = int(payload.get("tokens", 1) or 1)
+    except (TypeError, ValueError):
+        tokens = 1
+    return tenant, tokens
 
 
 def _record_metrics(count: int, elapsed: float) -> None:

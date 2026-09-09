@@ -12,6 +12,7 @@ import os
 
 from app.api.server import create_app
 from app.core.env import load_env
+from app.core.tenancy import build_tenancy
 from app.domain.experience import ExperienceStore
 from app.domain.persist import open_persistent_engine
 from app.domain.relations import ensure_scenario
@@ -38,6 +39,7 @@ app = create_app(
     experience=ExperienceStore("data/experience.jsonl"),
     trace=os.getenv("TRACE_ENABLED", "1") not in ("0", "false", "False"),
     trace_dir=os.getenv("TRACE_DIR", "data/traces"),
+    tenancy=build_tenancy(),
 )
 
 

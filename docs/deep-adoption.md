@@ -17,9 +17,11 @@
 | 配置/LLM | `Config` 注入 + `SymphonyLLM`（.env 真实模型） | `app/core/llm_factory.py` |
 | 可观测 | Prometheus 文本指标 + `/metrics` 端点 | `app/engine/service.py` |
 
-## 2. 待深化的方向（按价值排序）
+## 2. 后续可扩展（超出当前单机范围）
 
-1. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
+1. **多机/消息总线**：事件泵换真队列，水平扩展（当前单机非并行）。
+2. **真实 IAM/加密**：对接单位身份体系与密钥管理。
+3. **文档级 RAG 服务**：条令/战例大语料检索（当前为记忆型战例召回）。
 
 ## 3. 性能基线（`python scripts/bench.py`）
 
@@ -93,3 +95,8 @@ D:/python/miniconda/envs/llm/python.exe -m pytest tests -q          # 回归
    —— 单位/目标建立 `adjacent_to`/`supports`/`threatened_by`/`threatens`/`near` 链接；
    `situation()` BFS 邻域态势；`SituationCapability` 注册 `query_situation` 工具；
    `GET /situation/{unit_id}?depth=`。已实测 u1 二跳邻域 9 条关系。
+
+9. **多租户/配额**：`app/core/tenancy.py`
+   —— `TenantManager` 租户上下文（namespace 隔离）、`QuotaManager` token 配额
+   （超限 `QuotaExceeded` → 事件 denied，不入队处理）、`UsageRecorder` 用量；
+   事件 payload 携带 `tenant`/`tokens`；`GET /tenants` 查看配额与用量快照。

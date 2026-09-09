@@ -107,6 +107,7 @@ POST /games/{game_id}/pump          # 消费待处理事件并跑推演图（新
 GET  /approvals                     # 待批命令列表
 GET  /interrupts                    # 框架 Interrupt（HITL）待处理列表
 GET  /experience/stats              # 战例库召回缓存统计
+GET  /tenants                       # 租户配额与用量快照
 POST /approvals/{order_id}          # 批准/驳回 {approve: bool}
 GET  /events?limit=&offset=         # 事件回执列表（分页）
 GET  /games/{game_id}/replay        # 复盘：orders/records + 节点时序 timeline
