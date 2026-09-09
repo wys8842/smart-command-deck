@@ -52,6 +52,7 @@ LLM_API_KEY=sk-xxx
 
 - 深度应用清单与后续路线：[docs/deep-adoption.md](docs/deep-adoption.md)
 - 性能基准（自动生成）：[docs/perf-report.md](docs/perf-report.md)，运行 `python scripts/bench.py`
+- 验收/压测报告（自动生成）：[docs/acceptance-report.md](docs/acceptance-report.md)，运行 `python scripts/acceptance.py`
 - 第一轮优化（已落地）：
   - EventBus/ReplayStore 改 **append-only JSONL**（去掉整文件重写，O(n)→O(1)）
   - **复用 Agent 与 GraphScheduler**（避免每事件重复构造）

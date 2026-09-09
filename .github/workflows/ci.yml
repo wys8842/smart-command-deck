@@ -33,3 +33,6 @@ jobs:
 
       - name: Test
         run: pytest tests -q
+
+      - name: Acceptance + stress report
+        run: python scripts/acceptance.py
