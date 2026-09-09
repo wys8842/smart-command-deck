@@ -41,7 +41,8 @@ def _reuse_factory(base_factory: Callable[[], Any]) -> Callable[[], Any]:
     return _factory
 
 
-def _with_capabilities(base_factory: Callable[[], Any], experience: Any) -> Callable[[], Any]:
+def _with_capabilities(base_factory: Callable[[], Any], experience: Any,
+                       situation_store: Any = None) -> Callable[[], Any]:
     """用框架 Capability 把应用能力装配到新建 Agent 上。"""
 
     def _factory() -> Any:
@@ -49,7 +50,8 @@ def _with_capabilities(base_factory: Callable[[], Any], experience: Any) -> Call
         try:
             from app.core.capabilities import install_app_capabilities
 
-            install_app_capabilities(agent, experience=experience)
+            install_app_capabilities(agent, experience=experience,
+                                     situation_store=situation_store)
         except Exception:  # noqa: BLE001
             pass
         return agent
@@ -79,7 +81,7 @@ async def process_pending(
     store = engine.object_store
     scheduler = GraphScheduler(store=state_store, max_iterations=8)
     recall_fn = (lambda q: experience.recall_block(q, top_k=3)) if experience is not None else None
-    agent_factory = _reuse_factory(_with_capabilities(base_factory, experience))
+    agent_factory = _reuse_factory(_with_capabilities(base_factory, experience, store))
     graph = build_deck_graph(agent_factory, store, recall_fn=recall_fn)
 
     _t0 = time.monotonic()
@@ -120,7 +122,7 @@ async def process_pending(
             async with sem:
                 # 并发下不复用 Agent/Scheduler 内部可变状态：各自独立图
                 local_graph = build_deck_graph(
-                    _reuse_factory(_with_capabilities(base_factory, experience)),
+                    _reuse_factory(_with_capabilities(base_factory, experience, store)),
                     store, recall_fn=recall_fn)
                 local_sched = GraphScheduler(store=state_store, max_iterations=8)
                 entry = "approve" if ev.kind == "approval_result" else None
@@ -196,3 +198,4 @@ def _save_case(experience: Any, event: Any, store: Any) -> None:
 
 
 __all__ = ["default_intel_factory", "process_pending"]
+

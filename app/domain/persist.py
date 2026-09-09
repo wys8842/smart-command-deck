@@ -9,7 +9,7 @@ from agentorchestra.ontology import GraphStore, ObjectStore, OntologyEngine, SQL
 from app.domain.schema import create_engine
 
 
-def open_persistent_engine(db_path: str, principal: str = "staff") -> OntologyEngine:
+def open_persistent_engine(db_path: str = "data/games.db", principal: str = "staff") -> OntologyEngine:
     """打开/创建 SQLite 持久化引擎（对象/动作注册幂等）。"""
     store = ObjectStore(graph=GraphStore(), backend=SQLiteBackend(db_path))
     engine = create_engine(store=store, principal=principal, roles=[principal])

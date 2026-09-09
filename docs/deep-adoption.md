@@ -19,8 +19,7 @@
 
 ## 2. 待深化的方向（按价值排序）
 
-1. **GraphStore 关系**：把敌我/隶属/相邻建成链接，供态势推理。
-2. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
+1. **多租户/配额**：多局隔离与资源配额（`governance/tenancy`）。
 
 ## 3. 性能基线（`python scripts/bench.py`）
 
@@ -89,3 +88,8 @@ D:/python/miniconda/envs/llm/python.exe -m pytest tests -q          # 回归
    —— `BattleExperienceCapability`（装配战例库 + 注册 `recall_battle_case` 工具）、
    `TelemetryCapability`（Prometheus/OTLP）；新建 Agent 时经框架 `CapabilityRegistry`
    统一 install；`GET /health` 返回 `capabilities`。
+
+8. **GraphStore 关系推理**：`app/domain/relations.py`
+   —— 单位/目标建立 `adjacent_to`/`supports`/`threatened_by`/`threatens`/`near` 链接；
+   `situation()` BFS 邻域态势；`SituationCapability` 注册 `query_situation` 工具；
+   `GET /situation/{unit_id}?depth=`。已实测 u1 二跳邻域 9 条关系。

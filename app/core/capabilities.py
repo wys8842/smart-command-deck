@@ -56,6 +56,24 @@ class BattleExperienceCapability(Capability):
             ctx.tool_registry.register_tool(RecallBattleCaseTool(self.store))
 
 
+class SituationCapability(Capability):
+    """态势关系能力：注册 `query_situation` 工具（GraphStore 邻域推理）。"""
+
+    name = "situation"
+
+    def __init__(self, store: Optional[Any] = None):
+        self.store = store
+
+    def is_enabled(self, ctx: CapabilityContext) -> bool:
+        return self.store is not None and ctx.tool_registry is not None
+
+    def install(self, ctx: CapabilityContext) -> None:
+        from app.domain.relations import SituationQueryTool
+
+        ctx.tool_registry.register_tool(SituationQueryTool(self.store))
+        ctx.state["situation_store"] = self.store
+
+
 class TelemetryCapability(Capability):
     """可观测能力：开启 Prometheus 指标（可选 OTLP）。"""
 
@@ -83,17 +101,21 @@ class TelemetryCapability(Capability):
 
 
 def build_app_capabilities(experience: Optional[Any] = None,
-                           telemetry: bool = True) -> CapabilityRegistry:
+                           telemetry: bool = True,
+                           situation_store: Optional[Any] = None) -> CapabilityRegistry:
     """构建应用级 Capability 注册表。"""
     reg = CapabilityRegistry()
     reg.register(BattleExperienceCapability(experience))
+    if situation_store is not None:
+        reg.register(SituationCapability(situation_store))
     if telemetry:
         reg.register(TelemetryCapability())
     return reg
 
 
 def install_app_capabilities(agent: Any, experience: Optional[Any] = None,
-                             telemetry: bool = False) -> None:
+                             telemetry: bool = False,
+                             situation_store: Optional[Any] = None) -> None:
     """把应用能力安装到某个 Agent（复用其 config/llm/registry/state）。"""
     try:
         state = getattr(agent, "_capability_state", None)
@@ -107,7 +129,8 @@ def install_app_capabilities(agent: Any, experience: Optional[Any] = None,
             name=getattr(agent, "name", "agent"),
             state=state,
         )
-        build_app_capabilities(experience=experience, telemetry=telemetry).install_all(ctx)
+        build_app_capabilities(experience=experience, telemetry=telemetry,
+                               situation_store=situation_store).install_all(ctx)
     except Exception:  # noqa: BLE001
         pass
 
@@ -115,6 +138,7 @@ def install_app_capabilities(agent: Any, experience: Optional[Any] = None,
 __all__ = [
     "RecallBattleCaseTool",
     "BattleExperienceCapability",
+    "SituationCapability",
     "TelemetryCapability",
     "build_app_capabilities",
     "install_app_capabilities",

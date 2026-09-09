@@ -10,6 +10,7 @@ from typing import Any, List, Optional
 from agentorchestra.ontology import (
     ActionType,
     GraphStore,
+    LinkType,
     ObjectStore,
     ObjectType,
     OntologyEngine,
@@ -29,6 +30,11 @@ Unit = ObjectType(
         ToolParameter(name="status", type="string", description="状态 idle/moving/scouted", required=False, default="idle"),
         ToolParameter(name="strength", type="number", description="兵力/完整度 0-100", required=False, default=100.0),
     ],
+    link_types=[
+        LinkType("adjacent_to", "unit", "unit", "MANY_TO_MANY", "相邻单位"),
+        LinkType("supports", "unit", "unit", "MANY_TO_MANY", "支援关系"),
+        LinkType("threatened_by", "unit", "target", "MANY_TO_MANY", "受威胁目标"),
+    ],
     display_name="单位",
 )
 
@@ -41,6 +47,10 @@ Target = ObjectType(
         ToolParameter(name="side", type="string", description="阵营", required=True),
         ToolParameter(name="threat", type="number", description="威胁度 0-1", required=False, default=0.5),
         ToolParameter(name="location", type="string", description="位置", required=False),
+    ],
+    link_types=[
+        LinkType("threatens", "target", "unit", "MANY_TO_MANY", "威胁单位"),
+        LinkType("near", "target", "unit", "MANY_TO_MANY", "附近单位"),
     ],
     display_name="目标",
 )

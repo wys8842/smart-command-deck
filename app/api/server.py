@@ -15,6 +15,7 @@ from app.api.ui import ui_html
 from app.core.llm_factory import build_intel_agent, llm_mode
 from app.core.tracing import build_trace_config, init_otel
 from app.domain.persist import open_persistent_engine
+from app.domain.relations import situation
 from app.domain.state_store import ensure_ready
 from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
@@ -142,7 +143,7 @@ def create_app(
             "llm_mode": mode,
             "llm_model": model,
             "capabilities": (["battle_experience"] if experience is not None else [])
-                            + ["telemetry"],
+                            + ["situation", "telemetry"],
         }
 
     @app.get("/metrics")
@@ -227,6 +228,11 @@ def create_app(
     @app.get("/games/{game_id}/replay")
     def replay(game_id: str) -> Dict[str, Any]:
         return export_timeline(store, replay_store=replay_store, thread_id=game_id)
+
+    @app.get("/situation/{unit_id}")
+    def situation_api(unit_id: str, depth: int = 2) -> Dict[str, Any]:
+        """邻域态势（GraphStore 关系推理）。"""
+        return situation(store, unit_id, depth=depth)
 
     return app
 

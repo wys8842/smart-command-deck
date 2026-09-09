@@ -110,6 +110,7 @@ GET  /experience/stats              # 战例库召回缓存统计
 POST /approvals/{order_id}          # 批准/驳回 {approve: bool}
 GET  /events?limit=&offset=         # 事件回执列表（分页）
 GET  /games/{game_id}/replay        # 复盘：orders/records + 节点时序 timeline
+GET  /situation/{unit_id}?depth=    # 邻域态势（GraphStore 关系推理）
 GET  /metrics                       # Prometheus 文本指标（含 SLO：事件时延/审批等待）
 GET  /health
 
