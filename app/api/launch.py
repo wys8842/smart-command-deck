@@ -9,9 +9,14 @@
 from __future__ import annotations
 
 from app.api.server import create_app
+from app.engine.replay import ReplayStore
 
-# 默认：SQLite data/games.db + EventBus data/events.json + 常驻 pump（可关）
-app = create_app(pump=True, poll_interval=1.0)
+# 默认：SQLite data/games.db + EventBus data/events.json + 复盘时序 + 常驻 pump（可关）
+app = create_app(
+    pump=True,
+    poll_interval=1.0,
+    replay_store=ReplayStore("data/replay.json"),
+)
 
 
 def main(host: str = "127.0.0.1", port: int = 8000, reload: bool = False) -> None:

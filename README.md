@@ -70,7 +70,8 @@ POST /events                        # 事件入队 {kind,source,payload,round}
 POST /games/{game_id}/pump          # 消费待处理事件并跑推演图（新事件/批准续跑）
 GET  /approvals                     # 待批命令列表
 POST /approvals/{order_id}          # 批准/驳回 {approve: bool}
-GET  /games/{game_id}/replay        # 复盘 timeline JSON
+GET  /events?limit=&offset=         # 事件回执列表（分页）
+GET  /games/{game_id}/replay        # 复盘：orders/records + 节点时序 timeline
 GET  /health
 
 # 测试

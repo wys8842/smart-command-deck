@@ -74,8 +74,8 @@ class EventBus:
             "status": "processed" if ev_id in self._data["processed"] else "queued",
         }
 
-    def list_receipts(self, limit: int = 50) -> list[dict]:
-        """列出最近事件回执（最新在前）。"""
+    def list_receipts(self, limit: int = 50, offset: int = 0) -> list[dict]:
+        """列出事件回执（最新在前，支持分页）。"""
         processed = set(self._data["processed"])
         out = []
         for rec in self._data["events"]:
@@ -87,7 +87,8 @@ class EventBus:
                 "ts": rec.get("ts"),
                 "status": "processed" if rec.get("ev_id") in processed else "queued",
             })
-        return list(reversed(out))[:limit]
+        ordered = list(reversed(out))
+        return ordered[offset: offset + limit]
 
     def pending(self) -> list[Event]:
         processed = set(self._data["processed"])

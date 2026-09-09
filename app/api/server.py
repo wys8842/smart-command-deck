@@ -15,7 +15,7 @@ from app.domain.persist import open_persistent_engine
 from app.engine.background import PumpWorker
 from app.engine.event_bus import EventBus, new_event
 from app.engine.hitl import approval_event, approve_order, pending_orders
-from app.engine.replay import export_timeline
+from app.engine.replay import ReplayStore, export_timeline
 from app.engine.service import default_intel_factory, process_pending
 
 
@@ -30,6 +30,9 @@ class ApproveIn(BaseModel):
     approve: bool = True
 
 
+DEFAULT_GAME = "default"
+
+
 def create_app(
     engine: Any = None,
     bus: Optional[EventBus] = None,
@@ -39,6 +42,7 @@ def create_app(
     config: Optional[Any] = None,
     pump: bool = False,
     poll_interval: float = 1.0,
+    replay_store: Optional[ReplayStore] = None,
 ) -> FastAPI:
     """构造 API 应用。
 
@@ -64,7 +68,8 @@ def create_app(
         factory = default_intel_factory
 
     worker = PumpWorker(engine, bus, poll_interval=poll_interval,
-                        intel_agent_factory=factory) if pump else None
+                        intel_agent_factory=factory, thread_id=DEFAULT_GAME,
+                        replay_store=replay_store) if pump else None
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -106,8 +111,8 @@ def create_app(
         return rec
 
     @app.get("/events")
-    def list_events(limit: int = 50) -> Dict[str, Any]:
-        return {"events": bus.list_receipts(limit=limit)}
+    def list_events(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        return {"events": bus.list_receipts(limit=limit, offset=offset)}
 
     @app.post("/games/{game_id}/pump")
     async def pump_once(game_id: str) -> Dict[str, Any]:
@@ -116,6 +121,7 @@ def create_app(
             engine, bus,
             intel_agent_factory=factory,
             thread_id=game_id,
+            replay_store=replay_store,
         )
 
     @app.get("/approvals")
@@ -135,7 +141,7 @@ def create_app(
 
     @app.get("/games/{game_id}/replay")
     def replay(game_id: str) -> Dict[str, Any]:
-        return export_timeline(store)
+        return export_timeline(store, replay_store=replay_store, thread_id=game_id)
 
     return app
 

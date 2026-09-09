@@ -22,12 +22,14 @@ class PumpWorker:
         poll_interval: float = 1.0,
         intel_agent_factory: Optional[Callable[[], Any]] = None,
         thread_id: str = "default",
+        replay_store: Any = None,
     ):
         self.engine = engine
         self.bus = bus
         self.poll_interval = poll_interval
         self.intel_agent_factory = intel_agent_factory
         self.thread_id = thread_id
+        self.replay_store = replay_store
         self._stop = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
         self.processed_total = 0
@@ -38,6 +40,7 @@ class PumpWorker:
             self.engine, self.bus,
             intel_agent_factory=self.intel_agent_factory,
             thread_id=self.thread_id,
+            replay_store=self.replay_store,
         )
         n = res["processed_count"]
         self.processed_total += n

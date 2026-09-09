@@ -23,11 +23,13 @@ async def process_pending(
     bus: EventBus,
     intel_agent_factory: Callable[[], Any] | None = None,
     thread_id: str = "default",
+    replay_store: Any = None,
 ) -> Dict[str, Any]:
     """消费 EventBus 中全部未处理事件并跑 deck 图。
 
     - 新事件（intel_report/alert…）：从入口执行整条 DAG；
     - 续跑事件（approval_result…）：从 approve 节点入口继续。
+    - replay_store 非空时，记录每次执行的节点时序。
     """
     factory = intel_agent_factory or default_intel_factory
     store = engine.object_store
@@ -39,7 +41,7 @@ async def process_pending(
         scheduler = GraphScheduler(store=None, max_iterations=8)
         errors: List[str] = []
 
-        await scheduler.execute(
+        res = await scheduler.execute(
             graph,
             event_message(event),
             thread_id=thread_id,
@@ -48,6 +50,12 @@ async def process_pending(
         )
         if errors:
             raise RuntimeError(f"事件 {event.ev_id} 推演失败: {errors}")
+        if replay_store is not None:
+            replay_store.append_run(
+                thread_id, event.ev_id,
+                [ev.to_dict() for ev in res.events],
+                status=res.status,
+            )
         bus.mark_processed(event.ev_id)
         processed.append(event.ev_id)
 

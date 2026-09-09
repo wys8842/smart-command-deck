@@ -148,7 +148,7 @@ async function decide(orderId, approve) {
 }
 
 async function loadReplay() {
-  const data = await api('/games/g1/replay');
+  const data = await api('/games/default/replay');
   document.getElementById('replay').textContent = JSON.stringify(data, null, 2);
 }
 
