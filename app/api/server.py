@@ -54,6 +54,7 @@ def create_app(
     replay_store: Optional[ReplayStore] = None,
     state_store: Optional[Any] = None,
     max_concurrency: int = 1,
+    experience: Optional[Any] = None,
 ) -> FastAPI:
     """构造 API 应用。
 
@@ -89,7 +90,8 @@ def create_app(
     worker = PumpWorker(engine, bus, poll_interval=poll_interval,
                         intel_agent_factory=factory, thread_id=DEFAULT_GAME,
                         replay_store=replay_store, state_store=state_store,
-                        max_concurrency=max_concurrency) if pump else None
+                        max_concurrency=max_concurrency,
+                        experience=experience) if pump else None
 
     resumer = None
     if state_store is not None:
@@ -171,7 +173,14 @@ def create_app(
             replay_store=replay_store,
             state_store=state_store,
             max_concurrency=max_concurrency,
+            experience=experience,
         )
+
+    @app.get("/experience/stats")
+    def experience_stats() -> Dict[str, Any]:
+        if experience is None:
+            return {"enabled": False}
+        return {"enabled": True, **experience.stats()}
 
     @app.get("/approvals")
     def approvals() -> Dict[str, Any]:

@@ -12,20 +12,28 @@ from agentorchestra.orchestration.orch.nodes import FunctionalNode
 class IntelAgentNode(Node):
     """研判 Agent 节点：执行 Agent 并把事件元数据传给下游（record 需要）。"""
 
-    def __init__(self, agent_factory: Callable[[], Any], input_key: str = "task"):
+    def __init__(self, agent_factory: Callable[[], Any], input_key: str = "task",
+                 recall_fn: Callable[[str], str] | None = None):
         self._agent_factory = agent_factory
         self._input_key = input_key
+        self._recall_fn = recall_fn
 
     async def run(self, message: dict[str, Any], ctx: NodeContext) -> NodeOutput:
         agent = self._agent_factory()
         task = message.get(self._input_key, message)
+        task_str = str(task) if not isinstance(task, str) else task
+        if self._recall_fn is not None:
+            try:
+                block = self._recall_fn(task_str)
+                if block:
+                    task_str = f"{block}\n\n{task_str}"
+            except Exception:  # noqa: BLE001
+                pass
         if hasattr(agent, "arun"):
-            result = await agent.arun(str(task) if not isinstance(task, str) else task)
+            result = await agent.arun(task_str)
         else:
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, lambda: agent.run(str(task) if not isinstance(task, str) else task)
-            )
+            result = await loop.run_in_executor(None, lambda: agent.run(task_str))
         return NodeOutput(
             result=result,
             data={

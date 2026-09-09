@@ -163,6 +163,7 @@ def settler(store: Any) -> Callable[[dict, NodeContext], NodeOutput]:
 def build_deck_graph(
     intel_agent_factory: Callable[[], Any],
     store: Any,
+    recall_fn: Callable[[str], str] | None = None,
 ) -> Graph:
     """构造完整推演图。
 
@@ -174,7 +175,8 @@ def build_deck_graph(
     g.add_node("entry", FunctionalNode(passthrough_entry))
     g.add_node("route", FunctionalNode(route_fn(store)))
     g.add_node("record", FunctionalNode(archiver(store)))
-    g.add_node("intel", IntelAgentNode(intel_agent_factory, input_key="task"))
+    g.add_node("intel", IntelAgentNode(intel_agent_factory, input_key="task",
+                                       recall_fn=recall_fn))
     g.add_node("create", FunctionalNode(order_creator(store)))
     g.add_node("approve", FunctionalNode(approval_gate(store)))
     g.add_node("execute", FunctionalNode(executor(store)))

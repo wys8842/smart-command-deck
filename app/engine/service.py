@@ -49,6 +49,7 @@ async def process_pending(
     replay_store: Any = None,
     state_store: Any = None,
     max_concurrency: int = 1,
+    experience: Any = None,
 ) -> Dict[str, Any]:
     """消费 EventBus 中全部未处理事件并跑 deck 图。
 
@@ -61,7 +62,8 @@ async def process_pending(
     base_factory = intel_agent_factory or default_intel_factory
     store = engine.object_store
     scheduler = GraphScheduler(store=state_store, max_iterations=8)
-    graph = build_deck_graph(_reuse_factory(base_factory), store)
+    recall_fn = (lambda q: experience.recall_block(q, top_k=3)) if experience is not None else None
+    graph = build_deck_graph(_reuse_factory(base_factory), store, recall_fn=recall_fn)
 
     _t0 = time.monotonic()
     processed: List[str] = []
@@ -86,6 +88,7 @@ async def process_pending(
             )
         bus.mark_processed(event.ev_id)
         processed.append(event.ev_id)
+        _save_case(experience, event, store)
 
     pending = bus.pending()
     if max_concurrency > 1 and len(pending) > 1:
@@ -94,7 +97,8 @@ async def process_pending(
         async def _bounded(ev):
             async with sem:
                 # 并发下不复用 Agent/Scheduler 内部可变状态：各自独立图
-                local_graph = build_deck_graph(_reuse_factory(base_factory), store)
+                local_graph = build_deck_graph(_reuse_factory(base_factory), store,
+                                               recall_fn=recall_fn)
                 local_sched = GraphScheduler(store=state_store, max_iterations=8)
                 entry = "approve" if ev.kind == "approval_result" else None
                 res = await local_sched.execute(
@@ -108,6 +112,7 @@ async def process_pending(
                     )
                 bus.mark_processed(ev.ev_id)
                 processed.append(ev.ev_id)
+                _save_case(experience, ev, store)
 
         await asyncio.gather(*[_bounded(ev) for ev in pending])
     else:
@@ -139,6 +144,25 @@ def _record_metrics(count: int, elapsed: float) -> None:
         if count:
             col.increment("deck_events_processed_total", count)
         col.observe("deck_pump_cycle_seconds", elapsed)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _save_case(experience: Any, event: Any, store: Any) -> None:
+    """事件处置成功后，把"事件+研判结论"沉淀为战例（供后续召回）。"""
+    if experience is None or getattr(event, "kind", "") == "approval_result":
+        return
+    try:
+        from app.domain.experience import advice_from_order
+
+        payload = getattr(event, "payload", {}) or {}
+        order_id = payload.get("order_id")
+        order = store.get("order", order_id) if order_id else None
+        advice = advice_from_order(order)
+        if not advice:
+            return
+        summary = str(payload.get("text") or payload)
+        experience.remember_case(event.kind, summary, advice, tags=[event.kind])
     except Exception:  # noqa: BLE001
         pass
 
