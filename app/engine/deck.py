@@ -48,8 +48,10 @@ def route_fn(store: Any) -> Callable[[dict, NodeContext], NodeOutput]:
         else:
             label = "high" if threat_of(store, event) >= THREAT_HIGH else "low"
         # 保留原始任务文本（供 intel 研判），route 仅用于条件边
+        threat = threat_of(store, event)
+        priority = min(100, max(0, int(threat * 100)))
         return NodeOutput(result=message.get("task", label), route=label,
-                          data={"event": event})
+                          data={"event": event, "priority": priority})
 
     return _route
 
